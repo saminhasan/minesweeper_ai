@@ -107,8 +107,8 @@ def get_rects_from_cluster(cluster: List[Tuple[int, int]]) -> List[pg.Rect]:
     """
     return [
         pg.Rect(
-            BORDER_SIZE + c * (CELL_SIZE + BORDER_SIZE * 2 + LINE_WIDTH),
-            BORDER_SIZE + r * (CELL_SIZE + BORDER_SIZE * 2 + LINE_WIDTH),
+            BORDER_SIZE + c * (CELL_SIZE + BORDER_SIZE * 2 + LINE_WIDTH) + 1,
+            BORDER_SIZE + r * (CELL_SIZE + BORDER_SIZE * 2 + LINE_WIDTH) + 1,
             CELL_SIZE,
             CELL_SIZE,
         )
@@ -220,11 +220,13 @@ class GUI:
             BORDER_SIZE * 2
             + cols * CELL_SIZE
             + (cols - 1) * (LINE_WIDTH + BORDER_SIZE * 2)
+            + 1
         )
         self.height: int = (
             BORDER_SIZE * 2
             + rows * CELL_SIZE
             + (rows - 1) * (LINE_WIDTH + BORDER_SIZE * 2)
+            + 1
         )
 
         # Initialize game state
@@ -279,7 +281,7 @@ class GUI:
         if not (self.board.game_over or self.board.game_won):
             if event.button == pg.BUTTON_LEFT:  # Left click
                 mouse_x, mouse_y = event.pos  # Get mouse position
-                # Calculate row and column based on the board and button size
+                # Pixel space to cell space
                 col = (mouse_x - BORDER_SIZE) // (
                     CELL_SIZE + LINE_WIDTH + BORDER_SIZE * 2
                 )
@@ -287,11 +289,119 @@ class GUI:
                     CELL_SIZE + LINE_WIDTH + BORDER_SIZE * 2
                 )
                 if 0 <= row < self.board.n_rows and 0 <= col < self.board.n_cols:
-                    self.board.reveal(row, col)
+                    if self.board.minefield[row, col]["mine_count"] == -1:
+                        self.board.reveal_all_mines()
+                        print("Game Over")
+                    elif not self.board.game_over:
+                        self.board.reveal(row, col)
+                        sol, self.probability = self.board.solve_minefield()
+
                     # print(self.board.minefield['mine_count'])
 
-        if not (self.board.game_over or self.board.game_won):
-            sol, self.probability = self.board.solve_minefield()
+    def draw_mine(self, x: int, y: int, size: int):
+        rect = pygame.Rect(x, y, size, size)
+        polygon = Polygon(
+            [rect.topleft, rect.topright, rect.bottomright, rect.bottomleft]
+        )
+        resolution = max(16, int(polygon.length / 10))
+        dilate_distance = CELL_SIZE // 9
+
+        # Smooth the exterior of the polygon
+        smoothed_exterior = (
+            polygon.buffer(
+                dilate_distance, cap_style=1, join_style=1, resolution=resolution
+            )
+            .buffer(
+                -dilate_distance * 3.0, cap_style=1, join_style=1, resolution=resolution
+            )
+            .buffer(dilate_distance, cap_style=1, join_style=1, resolution=resolution)
+        )
+
+        # Draw the smoothed exterior
+        pg.gfxdraw.aapolygon(
+            self.screen,
+            list(map(tuple, smoothed_exterior.exterior.coords)),
+            pygame.Color("grey55"),
+        )
+        pg.gfxdraw.filled_polygon(
+            self.screen,
+            list(map(tuple, smoothed_exterior.exterior.coords)),
+            pygame.Color("grey55"),
+        )
+        # pygame.draw.rect(self.screen, pygame.Color("red"), rect)
+
+        # Draw the black center circle
+        center_x, center_y = x + size // 2, y + size // 2
+        center_radius = size // 3
+        pygame.gfxdraw.aacircle(
+            self.screen, center_x, center_y, center_radius, pygame.Color("black")
+        )
+        pygame.gfxdraw.filled_circle(
+            self.screen, center_x, center_y, center_radius, pygame.Color("black")
+        )
+
+        # Line properties
+        line_length = size // 2.4
+        line_thickness = size // 12
+        tip_radius = size // 30
+
+        # Draw the '+' lines
+        # Horizontal line
+        pygame.draw.line(
+            self.screen,
+            pygame.Color("black"),
+            (center_x - int(line_length), center_y),
+            (center_x + int(line_length), center_y),
+            line_thickness,
+        )
+        # Vertical line
+        pygame.draw.line(
+            self.screen,
+            pygame.Color("black"),
+            (center_x, center_y - int(line_length)),
+            (center_x, center_y + int(line_length)),
+            line_thickness,
+        )
+
+        # Rotate the '+' lines by 45 degrees to form an 'X'
+        diagonal_offset = int(
+            0.95 * line_length * np.sqrt(2) / 2
+        )  # Diagonal length for 45-degree rotation
+
+        # Diagonal line (top-left to bottom-right)
+        pygame.draw.line(
+            self.screen,
+            pygame.Color("black"),
+            (center_x - diagonal_offset, center_y - diagonal_offset),
+            (center_x + diagonal_offset, center_y + diagonal_offset),
+            tip_radius * 2,
+        )
+        # Diagonal line (bottom-left to top-right)
+        pygame.draw.line(
+            self.screen,
+            pygame.Color("black"),
+            (center_x - diagonal_offset, center_y + diagonal_offset),
+            (center_x + diagonal_offset, center_y - diagonal_offset),
+            tip_radius * 2,
+        )
+
+        # Draw small filled circles at the ends of the diagonal lines
+        tips = [
+            (center_x - diagonal_offset, center_y - diagonal_offset),  # Top-left tip
+            (
+                center_x + diagonal_offset,
+                center_y + diagonal_offset,
+            ),  # Bottom-right tip
+            (center_x - diagonal_offset, center_y + diagonal_offset),  # Bottom-left tip
+            (center_x + diagonal_offset, center_y - diagonal_offset),  # Top-right tip
+        ]
+        for tip in tips:
+            pygame.gfxdraw.aacircle(
+                self.screen, tip[0], tip[1], tip_radius, pygame.Color("black")
+            )
+            pygame.gfxdraw.filled_circle(
+                self.screen, tip[0], tip[1], tip_radius, pygame.Color("black")
+            )
 
     def draw(self) -> None:
         """
@@ -299,46 +409,50 @@ class GUI:
         """
         # Fill the screen with the background color
         self.screen.fill(background_color)
-        if not self.board.game_over or True:
-            # Draw clusters
-            board = self.board.minefield["state"]
-            clusters = find_clusters(board, COVERED)
-            for cluster in clusters:
-                rects = get_rects_from_cluster(cluster)
-                polygon = rects_to_polygon(rects)
-                draw_polygon_with_holes(
-                    self.screen, polygon, cell_color, background_color
-                )
 
-            # Draw cells with numbers or probabilities
-            for row in range(self.board.n_rows):
-                for col in range(self.board.n_cols):
-                    x = BORDER_SIZE + col * (CELL_SIZE + BORDER_SIZE * 2 + LINE_WIDTH)
-                    y = BORDER_SIZE + row * (CELL_SIZE + BORDER_SIZE * 2 + LINE_WIDTH)
-                    cell = self.board.minefield[row, col]
+        # Draw clusters
+        board = self.board.minefield["state"]
+        clusters = find_clusters(board, COVERED)
+        for cluster in clusters:
+            rects = get_rects_from_cluster(cluster)
+            polygon = rects_to_polygon(rects)
+            draw_polygon_with_holes(self.screen, polygon, cell_color, background_color)
 
-                    # Draw uncovered cells with mine counts
-                    if cell["state"] == self.board.states.UNCOVERED.value:
-                        if cell["mine_count"] > 0:
-                            text_surface = self.font.render(
-                                f"{cell['mine_count']}", True, text_color
-                            )
-                            text_rect = text_surface.get_rect(
-                                center=(x + CELL_SIZE // 2, y + CELL_SIZE // 2)
-                            )
-                            self.screen.blit(text_surface, text_rect)
+        if self.board.game_over:
+            for row, col in self.board.mines:
+                x = BORDER_SIZE + col * (CELL_SIZE + BORDER_SIZE * 2 + LINE_WIDTH) + 1
+                y = BORDER_SIZE + row * (CELL_SIZE + BORDER_SIZE * 2 + LINE_WIDTH) + 1
+                self.draw_mine(x, y, CELL_SIZE)
 
-                    # Draw covered cells with probabilities (if available)
-                    if cell["state"] == self.board.states.COVERED.value:
-                        if self.probability is not None:
-                            probability = self.probability[row, col]
-                            text_surface = self.font.render(
-                                f"{probability:.2f}", True, get_custom_rgb(probability)
-                            )
-                            text_rect = text_surface.get_rect(
-                                center=(x + CELL_SIZE // 2, y + CELL_SIZE // 2)
-                            )
-                            self.screen.blit(text_surface, text_rect)
+        # Draw cells with numbers or probabilities
+        for row in range(self.board.n_rows):
+            for col in range(self.board.n_cols):
+                x = BORDER_SIZE + col * (CELL_SIZE + BORDER_SIZE * 2 + LINE_WIDTH) + 1
+                y = BORDER_SIZE + row * (CELL_SIZE + BORDER_SIZE * 2 + LINE_WIDTH) + 1
+                cell = self.board.minefield[row, col]
+
+                # Draw uncovered cells with mine counts
+                if cell["state"] == self.board.states.UNCOVERED.value:
+                    if cell["mine_count"] > 0:
+                        text_surface = self.font.render(
+                            f"{cell['mine_count']}", True, text_color
+                        )
+                        text_rect = text_surface.get_rect(
+                            center=(x + CELL_SIZE // 2, y + CELL_SIZE // 2)
+                        )
+                        self.screen.blit(text_surface, text_rect)
+
+                # Draw covered cells with probabilities (if available)
+                if cell["state"] == self.board.states.COVERED.value:
+                    if self.probability is not None:
+                        probability = self.probability[row, col]
+                        text_surface = self.font.render(
+                            f"{probability:.2f}", True, get_custom_rgb(probability)
+                        )
+                        text_rect = text_surface.get_rect(
+                            center=(x + CELL_SIZE // 2, y + CELL_SIZE // 2)
+                        )
+                        self.screen.blit(text_surface, text_rect)
 
         # Grid line parameters
         gap_size = CELL_SIZE // 8
