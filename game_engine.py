@@ -4,7 +4,8 @@ import string
 import numpy as np
 from solver import Rule, MineCount, solve
 from enum import Enum
-from scipy.signal import convolve2d
+
+# from scipy.signal import convolve2d
 
 
 from typing import Any, Set, Dict, List, Tuple
@@ -157,24 +158,31 @@ class Minesweeper:
         ]
         return neighbors
 
-    # def get_frontier_cells(self):
+    # def get_frontier_cells(self) -> np.ndarray:
     #     """
     #     Computes the frontier cells that are adjacent to revealed cells.
 
     #     Returns:
-    #         np.ndarray: A matrix indicating frontier cells.
+    #         np.ndarray: A binary matrix indicating frontier cells (1 for frontier, 0 otherwise).
     #     """
     #     # Create a matrix to represent the revealed state of each cell
-    #     revealed_matrix = np.array([[cell['state'] == State.UNCOVERED.value for cell in row] for row in self.minefield])
+    #     revealed_matrix: np.ndarray = np.array(
+    #         [
+    #             [cell["state"] == State.UNCOVERED.value for cell in row]
+    #             for row in self.minefield
+    #         ]
+    #     )
 
     #     # Define a 3x3 kernel filled with ones
-    #     kernel = np.ones((3, 3))
+    #     kernel: np.ndarray = np.ones((3, 3))
 
     #     # Perform 2D convolution to count the number of revealed neighbors for each cell
-    #     convolved = convolve2d(revealed_matrix, kernel, mode='same')
+    #     convolved: np.ndarray = convolve2d(revealed_matrix, kernel, mode="same")
 
     #     # Identify cells that are not revealed but are adjacent to at least one revealed cell
-    #     frontier = np.logical_and(convolved > 0, revealed_matrix == 0).astype(int)
+    #     frontier: np.ndarray = np.logical_and(
+    #         convolved > 0, revealed_matrix == 0
+    #     ).astype(int)
     #     return frontier
 
     def create_rules_from_minefield(self) -> List[Any]:
@@ -232,22 +240,21 @@ class Minesweeper:
         )
         return self.decode_solution(results)
 
-    def convert_minefield(self) -> np.ndarray:
-        converted_minefield: np.ndarray = np.zeros(
-            (self.n_rows, self.n_cols), dtype=np.int8
+    def get_input(self) -> np.ndarray:
+        display_array: np.ndarray = np.full_like(
+            self.minefield["mine_count"], self.states.COVERED.value
         )
+        display_array[self.minefield["state"] == self.states.UNCOVERED.value] = (
+            self.minefield["mine_count"][
+                self.minefield["state"] == self.states.UNCOVERED.value
+            ]
+        )
+        return display_array
 
-        for i in range(self.n_rows):
-            for j in range(self.n_cols):
-                cell = self.minefield[i, j]
-                if cell["state"] == self.states.COVERED.value:
-                    converted_minefield[i, j] = -1
-                elif cell["mine_count"] == -1:
-                    converted_minefield[i, j] = -2
-                else:
-                    converted_minefield[i, j] = cell["mine_count"]
-
-        return converted_minefield
+    def get_output(self) -> np.ndarray:
+        _, probability = self.solve_minefield()
+        probability[self.minefield["state"] == self.states.UNCOVERED.value] = 0
+        return probability
 
     @staticmethod
     def display_minefield(minefield: np.ndarray) -> None:
