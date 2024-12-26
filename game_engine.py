@@ -16,7 +16,6 @@ game_mode: Dict[str, Dict[str, int]] = {
     "easy": {"rows": 10, "columns": 10, "mines": 10},
     "intermediate": {"rows": 16, "columns": 16, "mines": 40},
     "hard": {"rows": 16, "columns": 40, "mines": 99},
-    "xtreme": {"rows": 50, "columns": 50, "mines": 100},
 }
 
 

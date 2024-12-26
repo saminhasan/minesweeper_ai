@@ -3,15 +3,52 @@ import pygame.locals
 from game_engine import Minesweeper
 import numpy as np
 import asyncio
+import matplotlib.colors as mcolors
+from typing import Tuple
+
+levels = {
+    0: "test",
+    1: "easy",
+    2: "intermediate",
+    3: "hard",
+}
+
+
+def get_custom_rgb(value: float) -> Tuple[int, int, int]:
+    """
+    Custom Green-Yellow-Orange-Red colormap.
+    Parameters:
+        value (float): A value between 0 and 1.
+    Returns:
+        Tuple[int, int, int]: A tuple of (R, G, B) values scaled to 0-255.
+    """
+    if not 0 <= value <= 1:
+        raise ValueError("Value must be between 0 and 1")
+    # Define the custom colormap: Green -> Yellow -> Orange -> Red
+    colors = [
+        (0, 1, 0),  # Green
+        (1, 1, 0),  # Yellow
+        (1, 0.5, 0),  # Orange
+        (1, 0, 0),  # Red
+    ]
+    custom_colormap = mcolors.LinearSegmentedColormap.from_list(
+        "GreenYellowOrangeRed", colors
+    )
+    # Get RGB from the custom colormap
+    rgb = np.array(custom_colormap(value)[:3]) * 255
+    return tuple(rgb.astype(int))
 
 
 class GUI:
     def __init__(self, level: str):
-        self.level = level  # Store the level for resetting the game
+        self.level = levels[level]  # Store the level for resetting the game
+        self.initialize_game()
+
+    def initialize_game(self):
         self.board = Minesweeper(self.level)  # Calculate dimensions
         # self.board.random_safe_reveal()
         _, self.probability = self.board.solve_minefield()
-        self.cell_size = 64
+        self.cell_size = 32
         self.rect_size = int(self.cell_size)
         self.line_width = 1
         vlines = self.board.n_cols + 1
@@ -57,6 +94,21 @@ class GUI:
         if key == pg.K_r:  # Check if 'R' key is pressed
             self.reset_game()
 
+        if key == pg.K_0:
+            self.level = levels[0]
+            self.reset_game()
+        if key == pg.K_1:
+            self.level = levels[1]
+            self.reset_game()
+
+        if key == pg.K_2:
+            self.level = levels[2]
+            self.reset_game()
+
+        if key == pg.K_3:
+            self.level = levels[3]
+            self.reset_game()
+
         else:
             handler = self.key_event_handlers.get(key)
             if handler:
@@ -81,16 +133,60 @@ class GUI:
                         elif cell_state == self.board.states.FLAGGED.value:
                             self.board.unflag(row, col)
         if not (self.board.game_over or self.board.game_won):
-            sol, self.probability = self.board.solve_minefield()
-            # self.probability = self.board.predict_model()
-            # print(self.probability)
-            # print(self.board.convert_minefield())
+            _, self.probability = self.board.solve_minefield()
 
     def draw(self):
         self.screen.fill([0, 0, 0])  # Background color
+        self.draw_cells()
+        self.draw_lines()
+        # Check for game over or won condition
+        if self.board.game_won or self.board.game_over:
+            # Create a transparent overlay surface
+            overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 128))  # Semi-transparent black background
+            self.screen.blit(overlay, (0, 0))
 
+            # Render main message
+            font_size = min(self.width // 15, self.height // 15)  # Dynamic font size
+            font = pygame.font.Font(None, font_size)
+
+            if self.board.game_over:
+                main_text = "Game Over, Press 'R' to Restart"
+            else:
+                main_text = "Game Won, Press 'R' to Restart"
+
+            main_text_surface = font.render(
+                main_text, True, (255, 255, 255)
+            )  # White text
+            main_text_rect = main_text_surface.get_rect(
+                center=(self.width // 2, self.height // 3)
+            )
+
+            # Render current level and difficulty options
+            sub_font_size = font_size // 2
+            sub_font = pygame.font.Font(None, sub_font_size)
+
+            level_text = (
+                f"Current Level: {self.level.capitalize()}"  # Capitalize level string
+            )
+            level_surface = sub_font.render(level_text, True, (255, 255, 255))
+            level_rect = level_surface.get_rect(
+                center=(self.width // 2, self.height // 2)
+            )
+
+            options_text = "Press 1 for Easy, 2 for Intermediate, 3 for Hard"
+            options_surface = sub_font.render(options_text, True, (255, 255, 255))
+            options_rect = options_surface.get_rect(
+                center=(self.width // 2, (2 * self.height) // 3)
+            )
+
+            # Draw everything
+            self.screen.blit(main_text_surface, main_text_rect)
+            self.screen.blit(level_surface, level_rect)
+            self.screen.blit(options_surface, options_rect)
+
+    def draw_cells(self):
         # Other parameters
-        gap_size = self.cell_size // 8
         corner_radius = self.cell_size // 5  # self.cell_size // 10
         offset = 5  # Small offset to create a black border
 
@@ -146,27 +242,22 @@ class GUI:
                         border_radius=corner_radius,
                     )
                     if self.probability is not None:
-                        if self.probability[row, col] > 0:
-                            text_surface = self.font.render(
-                                f"{self.probability[row, col]:.2f}",
-                                True,
-                                self.text_color,
+                        text_surface = self.font.render(
+                            f"{self.probability[row, col]:.2f}",
+                            True,
+                            get_custom_rgb(self.probability[row, col]),
+                        )
+                        text_rect = text_surface.get_rect(
+                            center=(
+                                rect_x + rect_size // 2,
+                                rect_y + rect_size // 2,
                             )
-                            text_rect = text_surface.get_rect(
-                                center=(
-                                    rect_x + rect_size // 2,
-                                    rect_y + rect_size // 2,
-                                )
-                            )
-                        elif self.probability[row, col] == 0:
-                            text_surface = self.font.render(f"{0}", True, (0, 255, 0))
-                            text_rect = text_surface.get_rect(
-                                center=(
-                                    rect_x + rect_size // 2,
-                                    rect_y + rect_size // 2,
-                                )
-                            )
+                        )
+
                         self.screen.blit(text_surface, text_rect)
+
+    def draw_lines(self):
+        gap_size = self.cell_size // 8
 
         # Draw lines with gaps
         for col in range(1, self.board.n_cols):
@@ -199,13 +290,11 @@ class GUI:
         self.running = False
 
     def reset_game(self):
-        # Reinitialize the Minesweeper board
-        self.board = Minesweeper(self.level)
-        _, self.probability = self.board.solve_minefield()
+        self.initialize_game()
 
 
 async def main():
-    game = GUI("easy")
+    game = GUI(1)
 
     try:
         while game.running:
