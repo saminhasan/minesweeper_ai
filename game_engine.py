@@ -1,10 +1,7 @@
 import random
 import string
-import numpy as np
-from solver import Rule, MineCount, solve
 from enum import Enum
-
-# from scipy.signal import convolve2d
+from solver import Rule, MineCount, solve
 
 
 from typing import Any, Set, Dict, List, Tuple
@@ -47,6 +44,10 @@ class TagGenerator:
         return tag
 
 
+import random
+from typing import List, Tuple, Set
+
+
 class Minesweeper:
     def __init__(self, difficulty: str) -> None:
         self.game_over: bool = False
@@ -56,132 +57,108 @@ class Minesweeper:
         self.n_cols: int = game_mode[difficulty]["columns"]
         self.shape: Tuple[int, int] = (self.n_rows, self.n_cols)
         self.n_mines: int = game_mode[difficulty]["mines"]
-        self.cell_dtype: np.dtype = np.dtype(
+
+        # Replace NumPy array with a list of lists of dicts.
+        self.minefield = [
             [
-                ("mine_count", np.int8),
-                ("state", np.int8),
+                {"mine_count": 0, "state": self.states.COVERED.value}
+                for _ in range(self.n_cols)
             ]
-        )
-        self.minefield: np.ndarray = np.zeros(
-            (self.n_rows, self.n_cols), dtype=self.cell_dtype
-        )
-        self.minefield["state"] = self.states.COVERED.value
+            for _ in range(self.n_rows)
+        ]
+
         self.mines: Set[Tuple[int, int]] = set()
         self.place_mines()
 
     def place_mines(self) -> None:
-        indices: List[Tuple[int, int]] = list(
-            np.indices(self.shape).reshape(len(self.shape), -1).T
-        )
+        indices: List[Tuple[int, int]] = [
+            (r, c) for r in range(self.n_rows) for c in range(self.n_cols)
+        ]
+
         mine_indices: List[Tuple[int, int]] = random.sample(indices, self.n_mines)
+
         for i, j in mine_indices:
             self.mines.add((i, j))
-            self.minefield[i, j]["mine_count"] = -1
-            row_range = slice(max(0, i - 1), min(i + 2, self.n_rows))
-            col_range = slice(max(0, j - 1), min(j + 2, self.n_cols))
-            neighbors = self.minefield[row_range, col_range]
-            no_mine = neighbors["mine_count"] != -1
-            neighbors["mine_count"][no_mine] += 1
+            self.minefield[i][j]["mine_count"] = -1
+            for r in range(max(0, i - 1), min(i + 2, self.n_rows)):
+                for c in range(max(0, j - 1), min(j + 2, self.n_cols)):
+                    if self.minefield[r][c]["mine_count"] != -1:
+                        self.minefield[r][c]["mine_count"] += 1
 
     def reveal(self, i: int, j: int) -> None:
         if self.game_over or self.game_won:
             return
-        if self.minefield[i, j]["state"] != State.COVERED.value:
+
+        # Use list indexing: self.minefield[i][j], not self.minefield[i, j]
+        if self.minefield[i][j]["state"] != State.COVERED.value:
             return
-        if self.minefield[i, j]["mine_count"] == -1:
+
+        if self.minefield[i][j]["mine_count"] == -1:
             self.game_over = True
             self.reveal_all_mines()
             print("Game Over! You hit a mine.")
             return
-        self.minefield[i, j]["state"] = State.UNCOVERED.value
-        if self.minefield[i, j]["mine_count"] == 0:
+
+        # Mark this cell as uncovered
+        self.minefield[i][j]["state"] = State.UNCOVERED.value
+
+        # If the cell has no adjacent mines, recursively reveal neighbors
+        if self.minefield[i][j]["mine_count"] == 0:
             for x in range(max(0, i - 1), min(i + 2, self.n_rows)):
                 for y in range(max(0, j - 1), min(j + 2, self.n_cols)):
                     if (x, y) != (i, j) and not (self.game_over or self.game_won):
                         self.reveal(x, y)
+
+        # Check if this reveal caused a win
         if self.check_win():
             self.game_won = True
             print("You won!")
             return
 
     def random_safe_reveal(self) -> None:
+        # Generate a list of all covered cells that are not mines
         safe_cells: List[Tuple[int, int]] = [
             (i, j)
             for i in range(self.n_rows)
             for j in range(self.n_cols)
-            if self.minefield[i, j]["state"] == State.COVERED.value
-            and self.minefield[i, j]["mine_count"] != -1
+            if self.minefield[i][j]["state"] == State.COVERED.value
+            and self.minefield[i][j]["mine_count"] != -1
         ]
+
         if not safe_cells:
             print("No safe cells to reveal.")
             return
+
+        # Randomly pick one of those safe cells and reveal it
         i, j = random.choice(safe_cells)
         self.reveal(i, j)
 
-    def flag(self, i: int, j: int) -> None:
-        if not (self.game_over or self.game_won):
-            if self.minefield[i, j]["state"] == State.COVERED.value:
-                self.minefield[i, j]["state"] = State.FLAGGED.value
-                print(f"Cell ({i}, {j}) flagged.")
-
-    def unflag(self, i: int, j: int) -> None:
-        if not (self.game_over or self.game_won):
-            if self.minefield[i, j]["state"] == State.FLAGGED.value:
-                self.minefield[i, j]["state"] = State.COVERED.value
-                print(f"Cell ({i}, {j}) unflagged.")
-
     def reveal_all_mines(self) -> None:
+        # For each mine location, mark its state as UNCOVERED
         for i, j in self.mines:
-            self.minefield[i, j]["state"] = State.UNCOVERED.value
+            self.minefield[i][j]["state"] = State.UNCOVERED.value
         self.game_over = True
         self.game_won = False
 
     def check_win(self) -> bool:
+        # Find all cells that are not uncovered
         covered_cells: List[Tuple[int, int]] = [
             (i, j)
             for i in range(self.n_rows)
             for j in range(self.n_cols)
-            if self.minefield[i, j]["state"] != State.UNCOVERED.value
+            if self.minefield[i][j]["state"] != State.UNCOVERED.value
         ]
+        # We win if the number of covered cells == number of mines
         return len(covered_cells) == self.n_mines
 
     def get_neighbors(self, i: int, j: int) -> List[Tuple[int, int]]:
-        row_range = slice(max(0, i - 1), min(i + 2, self.n_rows))
-        col_range = slice(max(0, j - 1), min(j + 2, self.n_cols))
-        neighbors = [
-            (x, y)
-            for x in range(row_range.start, row_range.stop)
-            for y in range(col_range.start, col_range.stop)
-            if (x, y) != (i, j)
-        ]
+        # Define neighbor ranges without NumPy slicing
+        neighbors = []
+        for x in range(max(0, i - 1), min(i + 2, self.n_rows)):
+            for y in range(max(0, j - 1), min(j + 2, self.n_cols)):
+                if (x, y) != (i, j):
+                    neighbors.append((x, y))
         return neighbors
-
-    # def get_frontier_cells(self) -> np.ndarray:
-    #     """
-    #     Computes the frontier cells that are adjacent to revealed cells.
-
-    #     Returns:
-    #         np.ndarray: A binary matrix indicating frontier cells (1 for frontier, 0 otherwise).
-    #     """
-    #     # Create a matrix to represent the revealed state of each cell
-    #     revealed_matrix: np.ndarray = np.array(
-    #         [
-    #             [cell["state"] == State.UNCOVERED.value for cell in row]
-    #             for row in self.minefield
-    #         ]
-    #     )
-
-    #     # Define a 3x3 kernel filled with ones
-    #     kernel: np.ndarray = np.ones((3, 3))
-
-    #     # Perform 2D convolution to count the number of revealed neighbors for each cell
-    #     convolved: np.ndarray = convolve2d(revealed_matrix, kernel, mode="same")
-
-    #     # Identify cells that are not revealed but are adjacent to at least one revealed cell
-    #     frontier: np.ndarray = np.logical_and(
-    #         convolved > 0, revealed_matrix == 0
-    #     ).astype(int)
-    #     return frontier
 
     def create_rules_from_minefield(self) -> List[Any]:
         rules: List[Any] = []
@@ -191,16 +168,19 @@ class Minesweeper:
 
         for i in range(self.n_rows):
             for j in range(self.n_cols):
-                if self.minefield[i, j]["state"] == State.UNCOVERED.value:
+                if self.minefield[i][j]["state"] == State.UNCOVERED.value:
                     neighbors = self.get_neighbors(i, j)
-                    mine_count: int = self.minefield[i, j]["mine_count"]
-                    covered_neighbors: List[str] = []
+                    mine_count: int = self.minefield[i][j]["mine_count"]
 
+                    covered_neighbors: List[str] = []
                     for x, y in neighbors:
+                        # Check if the neighbor is COVERED or FLAGGED
+                        neighbor_state = self.minefield[x][y]["state"]
                         if (
-                            self.minefield[x, y]["state"] == State.COVERED.value
-                            or State.FLAGGED.value
+                            neighbor_state == State.COVERED.value
+                            or neighbor_state == State.FLAGGED.value
                         ):
+                            # Assign a unique tag to this neighbor if needed
                             if (x, y) not in tags:
                                 tag: str = tag_generator.next_tag()
                                 tags[(x, y)] = tag
@@ -208,71 +188,57 @@ class Minesweeper:
                             covered_neighbors.append(tags[(x, y)])
 
                     if covered_neighbors:
+                        # Create a rule like: "sum of these covered neighbors = mine_count"
                         rules.append(Rule(mine_count, covered_neighbors))
 
         return rules
 
     def decode_solution(
         self, solution: Dict[str, float]
-    ) -> Tuple[Dict[Tuple[int, int], float], np.ndarray]:
+    ) -> Tuple[Dict[Tuple[int, int], float], List[List[float]]]:
+        """
+        Returns:
+            decoded_solution: A dict mapping (row, col) -> probability
+            probability_array: A 2D list of floats, same shape as minefield
+        """
         decoded_solution: Dict[Tuple[int, int], float] = {}
-        try:
-            probability_array: np.ndarray = (
-                np.zeros((self.n_rows, self.n_cols)) + solution[None]
-            )
-        except KeyError:
-            probability_array = np.zeros((self.n_rows, self.n_cols))
 
+        # 1) Determine the default value for each cell (e.g., 0.0 if solution[None] not present)
+        try:
+            default_prob = solution[None]
+        except KeyError:
+            default_prob = 0.0
+
+        # 2) Create a 2D list initialized with this default probability
+        probability_array: List[List[float]] = [
+            [default_prob for _ in range(self.n_cols)] for _ in range(self.n_rows)
+        ]
+
+        # 3) Fill in specific probabilities for tags that exist
         for tag, probability in solution.items():
             if tag in self.tag_to_index:
-                decoded_solution[self.tag_to_index[tag]] = probability
-                probability_array[self.tag_to_index[tag]] = probability
+                i, j = self.tag_to_index[tag]
+                decoded_solution[(i, j)] = probability
+                probability_array[i][j] = probability
 
         return decoded_solution, probability_array
 
-    def solve_minefield(self) -> Tuple[Dict[Tuple[int, int], float], np.ndarray]:
+    def solve_minefield(self) -> Tuple[Dict[Tuple[int, int], float], List[List[float]]]:
+        """
+        Returns:
+            (decoded_solution, probability_array):
+            - decoded_solution: dict of (row, col) -> probability
+            - probability_array: 2D list of probabilities
+        """
         rules: List[Any] = self.create_rules_from_minefield()
         total_cells: int = self.n_rows * self.n_cols
+
+        # 'solve' is presumably an external function that returns a dict like {tag: probability, ...}
         results = solve(
             rules, MineCount(total_cells=total_cells, total_mines=self.n_mines)
         )
+
         return self.decode_solution(results)
-
-    def get_input(self) -> np.ndarray:
-        display_array: np.ndarray = np.full_like(
-            self.minefield["mine_count"], self.states.COVERED.value
-        )
-        display_array[self.minefield["state"] == self.states.UNCOVERED.value] = (
-            self.minefield["mine_count"][
-                self.minefield["state"] == self.states.UNCOVERED.value
-            ]
-        )
-        return display_array
-
-    def get_output(self) -> np.ndarray:
-        _, probability = self.solve_minefield()
-        probability[self.minefield["state"] == self.states.UNCOVERED.value] = 0
-        return probability
-
-    @staticmethod
-    def display_minefield(minefield: np.ndarray) -> None:
-        rows, cols = minefield.shape
-        for i in range(rows):
-            for j in range(cols):
-                cell = minefield[i, j]
-                if cell["state"] == State.COVERED.value:
-                    print("#", end=" ")
-                elif cell["state"] == State.FLAGGED.value:
-                    print("F", end=" ")
-                elif cell["state"] == State.UNCOVERED.value:
-                    if cell["mine_count"] == -1:
-                        print("*", end=" ")  # Print an asterisk for mines
-                    else:
-                        print(
-                            cell["mine_count"] if cell["mine_count"] >= 0 else " ",
-                            end=" ",
-                        )
-            print()  # Newline after each row
 
 
 if __name__ == "__main__":

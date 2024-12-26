@@ -88,7 +88,9 @@ class GUI:
 
         pg.init()
         pg.font.init()
-        self.font = pg.font.SysFont("dseg7classicregular", 16)
+        self.font = pg.font.Font(None, 16)  # Default font in PyGBag
+
+        # self.font = pg.font.SysFont("dseg7classicregular", 16)
         self.clock = pg.time.Clock()
         self.screen = pg.display.set_mode((self.width, self.height))
         pg.display.set_caption("Minesweeper")
@@ -144,7 +146,7 @@ class GUI:
                     if event.button == 1:  # Left click
                         self.board.reveal(row, col)
                     elif event.button == 3:  # Right click
-                        cell_state = self.board.minefield[row, col]["state"]
+                        cell_state = self.board.minefield[row][col]["state"]
                         if cell_state == self.board.states.COVERED.value:
                             self.board.flag(row, col)
                         elif cell_state == self.board.states.FLAGGED.value:
@@ -212,7 +214,7 @@ class GUI:
             for col in range(self.board.n_cols):
                 x = col * (self.cell_size + self.line_width) + self.line_width
                 y = row * (self.cell_size + self.line_width) + self.line_width
-                cell = self.board.minefield[row, col]
+                cell = self.board.minefield[row][col]
 
                 # Adjust dimensions to include the offset
                 rect_x, rect_y = x + offset, y + offset
@@ -260,9 +262,9 @@ class GUI:
                     )
                     if self.probability is not None:
                         text_surface = self.font.render(
-                            f"{self.probability[row, col]:.2f}",
+                            f"{self.probability[row][col]:.2f}",
                             True,
-                            colormap.get_rgb(self.probability[row, col]),
+                            colormap.get_rgb(self.probability[row][col]),
                         )
                         text_rect = text_surface.get_rect(
                             center=(

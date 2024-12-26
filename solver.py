@@ -6,7 +6,6 @@ import collections
 from util import *
 from itertools import chain
 from functools import reduce
-from numpy import int8, int32, float64
 from typing import Any, Set, Dict, List, Self, Tuple, Union, Iterator, Optional
 
 
@@ -129,7 +128,7 @@ class Rule_(ImmutableMixin):
 
     def __init__(
         self,
-        num_mines: Union[int, int32, int8],
+        num_mines: Union[int, int, int],
         cells_: frozenset,
         num_cells: Optional[int] = None,
     ) -> None:
@@ -183,7 +182,7 @@ class Rule_(ImmutableMixin):
         """build a FrontTally from this *trivial* rule only"""
         return FrontTally.from_rule(self)
 
-    def _canonical(self) -> Tuple[Union[int, int32, int8], frozenset]:
+    def _canonical(self) -> Tuple[Union[int, int, int], frozenset]:
         return (self.num_mines, self.cells_)
 
     def __repr__(self):
@@ -380,11 +379,11 @@ class FrontTally(object):
         for subtally in list(self.subtallies.values()):
             subtally.finalize()
 
-    def min_mines(self) -> Union[int, int32, int8]:
+    def min_mines(self) -> Union[int, int, int]:
         """minimum # of mines found among all configurations"""
         return min(self.subtallies)
 
-    def max_mines(self) -> Union[int, int32, int8]:
+    def max_mines(self) -> Union[int, int, int]:
         """maximum # of mines found among all configurations"""
         return max(self.subtallies)
 
@@ -410,7 +409,7 @@ class FrontTally(object):
     ) -> Iterator[
         Union[
             Iterator[Tuple[frozenset, float]],
-            Iterator[Tuple[frozenset, float64]],
+            Iterator[Tuple[frozenset, float]],
             Iterator[Tuple[UnchartedCell, float]],
         ]
     ]:
@@ -485,7 +484,7 @@ class Rule(ImmutableMixin):
         represents that cell (string, int, any hashable)
     """
 
-    def __init__(self, num_mines: int8, cells: List[str]) -> None:
+    def __init__(self, num_mines: int, cells: List[str]) -> None:
         self.num_mines = num_mines
         self.cells = set_(cells)
 
@@ -500,7 +499,7 @@ class Rule(ImmutableMixin):
             len(self.cells),
         )
 
-    def _canonical(self) -> Tuple[int8, frozenset]:
+    def _canonical(self) -> Tuple[int, frozenset]:
         return (self.num_mines, self.cells)
 
     def __repr__(self):
@@ -513,7 +512,7 @@ class Rule(ImmutableMixin):
 def solve(
     rules: List[Rule], mine_prevalence: MineCount, other_tag: Optional[Any] = None
 ) -> Union[
-    Dict[Optional[str], Union[float, float64]], Dict[str, float], Dict[str, float64]
+    Dict[Optional[str], Union[float, float]], Dict[str, float], Dict[str, float]
 ]:
     """solve a minesweeper board.
 
@@ -605,7 +604,7 @@ class Reduceable(ImmutableMixin):
         # For example, if Reduceable has a 'metric' method that returns a value that can be compared:
         return self.metric() < other.metric()
 
-    def metric(self) -> Tuple[int, int, float64]:
+    def metric(self) -> Tuple[int, int, float]:
         """calculate the attractiveness of this reduction
 
         favor reductions that involve bigger rules, and amongst same-sized
@@ -784,7 +783,7 @@ class RuleReducer(object):
 
 
 def permute(
-    count: Union[int32, int8],
+    count: Union[int, int],
     cells: List[frozenset],
     permu: Optional[Set[Tuple[frozenset, int]]] = None,
 ) -> Iterator[Permutation]:
@@ -828,7 +827,7 @@ class PermutationSet(object):
     """
 
     def __init__(
-        self, cells_: frozenset, k: Union[int32, int8], permus: Set[Permutation]
+        self, cells_: frozenset, k: Union[int, int], permus: Set[Permutation]
     ) -> None:
         """
         cells_ -- set of supercells
@@ -1120,7 +1119,7 @@ class FrontSubtally(object):
     ) -> Iterator[
         Union[
             Iterator[Tuple[frozenset, float]],
-            Iterator[Tuple[frozenset, float64]],
+            Iterator[Tuple[frozenset, float]],
             Iterator[Tuple[UnchartedCell, float]],
         ]
     ]:
@@ -1376,10 +1375,10 @@ class CombinedFront(object):
 
     @staticmethod
     def for_other(
-        min_mines: Union[int, int32],
-        max_mines: Union[int, int32],
+        min_mines: Union[int, int],
+        max_mines: Union[int, int],
         num_uncharted_cells: int,
-        max_other_mines: Union[int, int32],
+        max_other_mines: Union[int, int],
     ) -> Self:
         """build a starter combined front to represent the 'uncharted cells' region"""
         return CombinedFront.from_counts_per_num_mines(
@@ -1393,7 +1392,7 @@ class CombinedFront(object):
         new: Self,
         min_remaining_mines: int,
         max_remaining_mines: int,
-        at_large_mines: Union[int, int32],
+        at_large_mines: Union[int, int],
     ) -> Self:
         """combine two combined fronts. min/max remaining mines represent the total remaining mines available
         in all fronts yet to be combined (excluding 'new'). this helps avoid computing combinations whose # mines
@@ -1434,7 +1433,7 @@ class CombinedFront(object):
 
 
 def relative_likelihood(
-    num_free_mines: int, num_uncharted_cells: int, max_other_mines: int32
+    num_free_mines: int, num_uncharted_cells: int, max_other_mines: int
 ) -> float:
     return discrete_relative_likelihood(
         num_uncharted_cells, num_free_mines, max_other_mines
@@ -1444,7 +1443,7 @@ def relative_likelihood(
 def combine_fronts(
     tallies: Set[FrontTally],
     num_uncharted_cells: int,
-    at_large_mines: Union[int, int32],
+    at_large_mines: Union[int, int],
 ) -> FrontTally:
     """assign relative weights to all sub-tallies in all fronts. because the
     total # of mines is fixed, we must do a combinatorial analysis to
@@ -1516,7 +1515,7 @@ def nondiscrete_relative_likelihood(p, k, k0):
     return float((p / (1 - p)) ** (k - k0))
 
 
-def discrete_relative_likelihood(n: int, k: int, k0: int32) -> float:
+def discrete_relative_likelihood(n: int, k: int, k0: int) -> float:
     """return 'n choose k' / 'n choose k0'"""
     if any(x < 0 or x > n for x in (k, k0)):
         raise ValueError("k, k0 must be [0, n]")
@@ -1542,7 +1541,7 @@ def expand_cells(cell_probs: chain, other_tag: Optional[Any]) -> Iterator[
     Union[
         Iterator[Tuple[None, float]],
         Iterator[Tuple[str, float]],
-        Iterator[Tuple[str, float64]],
+        Iterator[Tuple[str, float]],
     ]
 ]:
     """back-convert the expected values for all supercells into per-cell
