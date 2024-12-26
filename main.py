@@ -1,10 +1,8 @@
+import asyncio
 import pygame as pg
 import pygame.locals
-from game_engine import Minesweeper
-import numpy as np
-import asyncio
-import matplotlib.colors as mcolors
 from typing import Tuple
+from game_engine import Minesweeper
 
 levels = {
     0: "test",
@@ -14,29 +12,48 @@ levels = {
 }
 
 
-def get_custom_rgb(value: float) -> Tuple[int, int, int]:
-    """
-    Custom Green-Yellow-Orange-Red colormap.
-    Parameters:
-        value (float): A value between 0 and 1.
-    Returns:
-        Tuple[int, int, int]: A tuple of (R, G, B) values scaled to 0-255.
-    """
-    if not 0 <= value <= 1:
-        raise ValueError("Value must be between 0 and 1")
-    # Define the custom colormap: Green -> Yellow -> Orange -> Red
-    colors = [
-        (0, 1, 0),  # Green
-        (1, 1, 0),  # Yellow
-        (1, 0.5, 0),  # Orange
-        (1, 0, 0),  # Red
-    ]
-    custom_colormap = mcolors.LinearSegmentedColormap.from_list(
-        "GreenYellowOrangeRed", colors
-    )
-    # Get RGB from the custom colormap
-    rgb = np.array(custom_colormap(value)[:3]) * 255
-    return tuple(rgb.astype(int))
+class CustomColormap:
+    def __init__(self):
+        """
+        Initializes a Green-Yellow-Orange-Red colormap with pre-defined RGB values.
+        """
+        self.colors = [
+            (0, 255, 0),  # Green
+            (255, 255, 0),  # Yellow
+            (255, 128, 0),  # Orange
+            (255, 0, 0),  # Red
+        ]
+        self.num_segments = len(self.colors) - 1
+
+    def get_rgb(self, value: float) -> Tuple[int, int, int]:
+        """
+        Maps a value in [0, 1] to an RGB color.
+        Parameters:
+            value (float): A value between 0 and 1.
+        Returns:
+            Tuple[int, int, int]: RGB color as integers in the range [0, 255].
+        """
+        if not 0 <= value <= 1:
+            raise ValueError("Value must be between 0 and 1")
+
+        # Scale value to the number of segments
+        scaled_value = value * self.num_segments
+        idx = int(scaled_value)  # Find the segment index
+        t = scaled_value - idx  # Fractional part within the segment
+
+        # Get the start and end colors for interpolation
+        color1 = self.colors[idx]
+        color2 = self.colors[min(idx + 1, self.num_segments)]
+
+        # Linear interpolation for each RGB channel
+        r = int((1 - t) * color1[0] + t * color2[0])
+        g = int((1 - t) * color1[1] + t * color2[1])
+        b = int((1 - t) * color1[2] + t * color2[2])
+
+        return r, g, b
+
+
+colormap = CustomColormap()
 
 
 class GUI:
@@ -48,7 +65,7 @@ class GUI:
         self.board = Minesweeper(self.level)  # Calculate dimensions
         # self.board.random_safe_reveal()
         _, self.probability = self.board.solve_minefield()
-        self.cell_size = 32
+        self.cell_size = 56
         self.rect_size = int(self.cell_size)
         self.line_width = 1
         vlines = self.board.n_cols + 1
@@ -245,7 +262,7 @@ class GUI:
                         text_surface = self.font.render(
                             f"{self.probability[row, col]:.2f}",
                             True,
-                            get_custom_rgb(self.probability[row, col]),
+                            colormap.get_rgb(self.probability[row, col]),
                         )
                         text_rect = text_surface.get_rect(
                             center=(

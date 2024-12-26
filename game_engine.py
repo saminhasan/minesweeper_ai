@@ -1,5 +1,4 @@
 import random
-import itertools
 import string
 import numpy as np
 from solver import Rule, MineCount, solve
