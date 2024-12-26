@@ -212,7 +212,7 @@ class GUI:
         self.level: str = level  # Store the level for resetting the game
         self.board = Minesweeper(level)  # Create a Minesweeper board
         # Solve the minefield and get the solution and probabilities
-        sol, self.probability = self.board.solve_minefield()
+        _, self.probability = self.board.solve_minefield()
 
         # Calculate board dimensions
         rows, cols = self.board.shape
@@ -294,9 +294,20 @@ class GUI:
                         print("Game Over")
                     elif not self.board.game_over:
                         self.board.reveal(row, col)
-                        sol, self.probability = self.board.solve_minefield()
-
-                    # print(self.board.minefield['mine_count'])
+                        _, self.probability = self.board.solve_minefield()
+                        # debug for nn dataset gen
+                        # print(self.probability)
+                        # display_array = np.full_like(
+                        #     self.board.minefield["mine_count"], -1
+                        # )
+                        # display_array[
+                        #     self.board.minefield["state"]
+                        #     == self.board.states.UNCOVERED.value
+                        # ] = self.board.minefield["mine_count"][
+                        #     self.board.minefield["state"]
+                        #     == self.board.states.UNCOVERED.value
+                        # ]
+                        # print(display_array)
 
     def draw_mine(self, x: int, y: int, size: int):
         rect = pygame.Rect(x, y, size, size)
@@ -540,7 +551,7 @@ class GUI:
         Reset the game by reinitializing the Minesweeper board.
         """
         self.board = Minesweeper(self.level)
-        sol, self.probability = self.board.solve_minefield()
+        _, self.probability = self.board.solve_minefield()
 
 
 if __name__ == "__main__":
