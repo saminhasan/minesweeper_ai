@@ -296,7 +296,7 @@ class GUI:
                         self.board.reveal(row, col)
                         _, self.probability = self.board.solve_minefield()
                         # debug for nn dataset gen
-                        # print(self.probability)
+                        print(self.probability)
                         # display_array = np.full_like(
                         #     self.board.minefield["mine_count"], -1
                         # )
