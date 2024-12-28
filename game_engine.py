@@ -2,8 +2,6 @@ import random
 import string
 from enum import Enum
 from solver import Rule, MineCount, solve
-
-
 from typing import Any, Set, Dict, List, Tuple
 
 # Type-hinted dictionary for game modes
@@ -15,11 +13,10 @@ game_mode: Dict[str, Dict[str, int]] = {
 }
 
 
-# State enum for cell states
 class State(Enum):
-    UNCOVERED = 0
-    COVERED = -1
-    FLAGGED = 1
+    UNCOVERED: int = 0
+    COVERED: int = -1
+    FLAGGED: int = 1
 
 
 class TagGenerator:

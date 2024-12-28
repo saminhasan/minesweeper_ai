@@ -77,7 +77,6 @@ class GUI:
         self.mine_color = (255, 0, 0)  # Red for mines
         self.uncovered_color = (0, 0, 0)  # Black for uncovered cells
         self.covered_color = (50, 50, 50)  # Light grey for covered cells
-        self.flagged_color = (10, 10, 10)  # Dark grey for flagged cells
         self.text_color = (220, 220, 220)  # White text
         self.line_color = (30, 30, 30)  # White color for lines
 
@@ -88,9 +87,9 @@ class GUI:
 
         pg.init()
         pg.font.init()
-        self.font = pg.font.Font(None, 16)  # Default font in PyGBag
+        # self.font = pg.font.Font(None, 18)  # Default font in PyGBag
 
-        # self.font = pg.font.SysFont("dseg7classicregular", 16)
+        self.font = pg.font.SysFont("dseg7classicregular", 16)
         self.clock = pg.time.Clock()
         self.screen = pg.display.set_mode((self.width, self.height))
         pg.display.set_caption("Minesweeper")
@@ -143,14 +142,9 @@ class GUI:
             # Check if the click is within the bounds of the board
             if 0 <= row < self.board.n_rows and 0 <= col < self.board.n_cols:
                 if event.type == pg.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # Left click
+                    if event.button == pg.BUTTON_LEFT:  # Left click
                         self.board.reveal(row, col)
-                    elif event.button == 3:  # Right click
-                        cell_state = self.board.minefield[row][col]["state"]
-                        if cell_state == self.board.states.COVERED.value:
-                            self.board.flag(row, col)
-                        elif cell_state == self.board.states.FLAGGED.value:
-                            self.board.unflag(row, col)
+
         if not (self.board.game_over or self.board.game_won):
             _, self.probability = self.board.solve_minefield()
 
@@ -182,7 +176,7 @@ class GUI:
             )
 
             # Render current level and difficulty options
-            sub_font_size = font_size // 2
+            sub_font_size = font_size
             sub_font = pygame.font.Font(None, sub_font_size)
 
             level_text = (
@@ -193,7 +187,7 @@ class GUI:
                 center=(self.width // 2, self.height // 2)
             )
 
-            options_text = "Press 1 for Easy, 2 for Intermediate, 3 for Hard"
+            options_text = "Press 1 - Easy, 2 - Intermediate, 3 - Hard"
             options_surface = sub_font.render(options_text, True, (255, 255, 255))
             options_rect = options_surface.get_rect(
                 center=(self.width // 2, (2 * self.height) // 3)
@@ -246,13 +240,7 @@ class GUI:
                                 )
                             )
                             self.screen.blit(text_surface, text_rect)
-                elif cell["state"] == self.board.states.FLAGGED.value:
-                    pg.draw.rect(
-                        self.screen,
-                        self.flagged_color,
-                        (rect_x, rect_y, rect_size, rect_size),
-                        border_radius=corner_radius,
-                    )
+
                 else:
                     pg.draw.rect(
                         self.screen,
