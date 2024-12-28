@@ -242,26 +242,41 @@ class GUI:
                             self.screen.blit(text_surface, text_rect)
 
                 else:
-                    pg.draw.rect(
-                        self.screen,
-                        self.covered_color,
-                        (rect_x, rect_y, rect_size, rect_size),
-                        border_radius=corner_radius,
-                    )
                     if self.probability is not None:
-                        text_surface = self.font.render(
-                            f"{self.probability[row][col]:.2f}",
-                            True,
-                            colormap.get_rgb(self.probability[row][col]),
-                        )
-                        text_rect = text_surface.get_rect(
-                            center=(
-                                rect_x + rect_size // 2,
-                                rect_y + rect_size // 2,
+                        if self.probability[row][col] == 0:
+                            pg.draw.rect(
+                                self.screen,
+                                pg.Color("green"),
+                                (rect_x, rect_y, rect_size, rect_size),
+                                border_radius=corner_radius,
                             )
-                        )
+                        elif self.probability[row][col] == 1:
+                            pg.draw.rect(
+                                self.screen,
+                                pg.Color("red"),
+                                (rect_x, rect_y, rect_size, rect_size),
+                                border_radius=corner_radius,
+                            )
+                        else:
+                            pg.draw.rect(
+                                self.screen,
+                                self.covered_color,
+                                (rect_x, rect_y, rect_size, rect_size),
+                                border_radius=corner_radius,
+                            )
+                            text_surface = self.font.render(
+                                f"{self.probability[row][col]:.2f}",
+                                True,
+                                colormap.get_rgb(self.probability[row][col]),
+                            )
+                            text_rect = text_surface.get_rect(
+                                center=(
+                                    rect_x + rect_size // 2,
+                                    rect_y + rect_size // 2,
+                                )
+                            )
 
-                        self.screen.blit(text_surface, text_rect)
+                            self.screen.blit(text_surface, text_rect)
 
     def draw_lines(self):
         gap_size = self.cell_size // 8

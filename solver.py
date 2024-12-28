@@ -4,6 +4,7 @@ import operator
 import itertools
 import collections
 from util import *
+from queue import PriorityQueue
 from itertools import chain
 from functools import reduce
 from typing import Any, Set, Dict, List, Self, Tuple, Union, Iterator, Optional
@@ -40,7 +41,7 @@ class Permutation(ImmutableMixin):
         must have an entry, even if they have 0 mines"""
         self.mapping = dict(mapping)
 
-    def subset(self, subcells: Union[Set[frozenset], frozenset]) -> Self:
+    def subset(self, subcells: Union[Set[frozenset], frozenset]) -> Permutation:
         """return a sub-permutation containing only the cells in 'subcells'"""
         return Permutation((cell, self.mapping[cell]) for cell in subcells)
 
@@ -50,7 +51,7 @@ class Permutation(ImmutableMixin):
         overlap = self.cells() & permu.cells()
         return self.subset(overlap) == permu.subset(overlap)
 
-    def combine(self, permu: Self) -> Self:
+    def combine(self, permu: Self) -> Permutation:
         """return a new permutation by combining this permutation with
         'permu'
         the permutations must be compatible!"""
@@ -128,7 +129,7 @@ class Rule_(ImmutableMixin):
 
     def __init__(
         self,
-        num_mines: Union[int, int, int],
+        num_mines: int,
         cells_: frozenset,
         num_cells: Optional[int] = None,
     ) -> None:
@@ -141,7 +142,7 @@ class Rule_(ImmutableMixin):
         if self.num_mines < 0 or self.num_mines > self.num_cells:
             raise InconsistencyError("rule with negative mines / more mines than cells")
 
-    def decompose(self) -> Iterator[Self]:
+    def decompose(self) -> Iterator[Rule_]:
         """if rule is completely full or empty of mines, split into sub-rules
         for each supercell"""
         if self.num_mines == 0 or self.num_mines == self.num_cells:
@@ -152,7 +153,7 @@ class Rule_(ImmutableMixin):
         else:
             yield self
 
-    def subtract(self, subrule: Self) -> Self:
+    def subtract(self, subrule: Rule_) -> Rule_:
         """if another rule is a sub-rule of this one, return a new rule
         covering only the difference"""
         return Rule_(
@@ -178,7 +179,7 @@ class Rule_(ImmutableMixin):
         """return whether this rule is trivial, i.e., has only one permutation"""
         return len(self.cells_) == 1
 
-    def tally(self) -> FrontTally:  # -> FrontTally:
+    def tally(self) -> FrontTally:
         """build a FrontTally from this *trivial* rule only"""
         return FrontTally.from_rule(self)
 
@@ -192,18 +193,17 @@ class Rule_(ImmutableMixin):
             sorted([sorted(list(cell_)) for cell_ in self.cells_]),
         )
 
+    #####################################################################
+    @staticmethod
+    def mk(num_mines, cells_):
+        """helper method for creation
 
-######################################################################
-# @staticmethod
-# def mk(num_mines, cells_):
-#     """helper method for creation
-
-#     num_mines -- total # of mines
-#     cells_ -- list of cells and supercells, where a supercell is a list of
-#         ordinary cells, e.g., ['A', ['B', 'C'], 'D']
-#     """
-#     cells_ = [listify(cell_) for cell_ in cells_]
-#     return Rule_(num_mines, set_(set_(cell_) for cell_ in cells_))
+        num_mines -- total # of mines
+        cells_ -- list of cells and supercells, where a supercell is a list of
+            ordinary cells, e.g., ['A', ['B', 'C'], 'D']
+        """
+        cells_ = [listify(cell_) for cell_ in cells_]
+        return Rule_(num_mines, set_(set_(cell_) for cell_ in cells_))
 
 
 class PermutedRuleset(object):
@@ -212,8 +212,8 @@ class PermutedRuleset(object):
 
     def __init__(
         self,
-        rules: Union[Set[Rule_], frozenset],
-        permu_map: Optional[Dict[Rule_, Self]] = None,
+        rules: set[Rule_],
+        permu_map: Optional[Dict[Rule_, PermutationSet]] = None,
     ) -> None:
         """
         rules -- ruleset
@@ -225,7 +225,7 @@ class PermutedRuleset(object):
         self.cell_rules_map = CellRulesMap(rules)
         self.cells_ = self.cell_rules_map.cells_()
 
-        def rule_permuset(r: Rule_) -> PermutationSet:
+        def rule_permuset(r: Rule_) -> PermutationSet | Self:
             return PermutationSet.from_rule(r) if permu_map is None else permu_map[r]
 
         # a mapping: rule -> PermutationSet for that rule
@@ -286,7 +286,7 @@ class PermutedRuleset(object):
         """
 
         superseded_rules = set()
-        decompositions = {}
+        decompositions: Dict = {}
         for rule, permu_set in self.permu_map.items():
             decomp = permu_set.decompose()
             if len(decomp) > 1:
@@ -304,19 +304,19 @@ class PermutedRuleset(object):
         self.cell_rules_map.remove_rule(rule)
         del self.permu_map[rule]
 
-    def add_permu_set(self, permu_set: Self) -> None:
+    def add_permu_set(self, permu_set: PermutationSet) -> None:
         """add a 'decomposed' rule to the ruleset"""
         rule = permu_set.to_rule()
         self.rules.add(rule)
         self.cell_rules_map.add_rule(rule)
         self.permu_map[rule] = permu_set
 
-    def filter(self, rule_subset: frozenset) -> Self:
+    def filter(self, rule_subset: set[Rule_] | Set) -> PermutedRuleset:
         """return a PermutedRuleset built from this one containing only a
         subset of rules"""
         return PermutedRuleset(rule_subset, self.permu_map)
 
-    def split_fronts(self) -> Set[Self]:
+    def split_fronts(self) -> Set[PermutedRuleset]:
         """split the ruleset into combinatorially-independent 'fronts'"""
         return set(
             self.filter(rule_subset) for rule_subset in self.cell_rules_map.partition()
@@ -355,6 +355,7 @@ class FrontTally(object):
         self.subtallies = (
             collections.defaultdict(FrontSubtally) if data is None else data
         )
+        self.total = None
 
     def tally(self, front: PermutedRuleset) -> None:
         """tally all possible configurations for a front (ruleset)
@@ -392,7 +393,7 @@ class FrontTally(object):
         statistical weighting later)"""
         return len(self.subtallies) == 1
 
-    def __iter__(self) -> Iterator[Self]:
+    def __iter__(self) -> Iterator:
         return iter(self.subtallies.items())
 
     def normalize(self) -> None:
@@ -430,7 +431,7 @@ class FrontTally(object):
         for num_mines, subtally in self:
             subtally.total *= scalefunc(num_mines)
 
-    def update_weights(self, weights: Dict[int, float]) -> None:
+    def update_weights(self, weights: dict[int, float] | dict[int, int]) -> None:
         """update each sub-tally's weight/total
 
         weights -- mapping: num_mines -> new weight of the sub-tally for 'num_mines'
@@ -439,7 +440,7 @@ class FrontTally(object):
             subtally.total = weights.get(num_mines, 0.0)
 
     @staticmethod
-    def from_rule(rule: Rule_) -> Self:
+    def from_rule(rule: Rule_) -> FrontTally:
         """tally a trivial rule"""
         assert rule.is_trivial()
         return FrontTally(
@@ -452,7 +453,9 @@ class FrontTally(object):
         )
 
     @staticmethod
-    def for_other(num_uncharted_cells: int, mine_totals: Dict[int, float]) -> Self:
+    def for_other(
+        num_uncharted_cells: int, mine_totals: dict[int, float] | dict[int, int]
+    ) -> FrontTally:
         """create a meta-tally representing the mine distribution of all
         'other' cells
 
@@ -510,7 +513,7 @@ class Rule(ImmutableMixin):
 
 
 def solve(
-    rules: List[Rule], mine_prevalence: MineCount, other_tag: Optional[Any] = None
+    rs: Set[Rule], mine_prevalence: MineCount, other_tag: Optional[Any] = None
 ) -> Union[
     Dict[Optional[str], Union[float, float]], Dict[str, float], Dict[str, float]
 ]:
@@ -519,7 +522,7 @@ def solve(
     take in a minesweeper board and return the solution as a dict mapping each
     cell to its probability of being a mine.
 
-    rules -- a set of 'Rule' describing the board
+    rs -- a set of 'Rule' describing the board
     mine_prevalence -- an object describing the total expected mines on the
         board. a MineCount indicates traditional minesweeper (fixed board
         dimensions with a total # of mines); a float indicates a fixed
@@ -528,13 +531,13 @@ def solve(
     other_tag -- tag used to represent all 'other' cells (all cells not
         mentioned in a rule) in the solution output
     """
-    rules, all_cells = condense_supercells(rules)
-    rules = reduce_rules(rules)
+    rules, all_cells = condense_supercells(rs)
+    ruless = reduce_rules(rules)
 
-    determined = set(r for r in rules if r.is_trivial())
-    rules -= determined
+    determined = set(r for r in ruless if r.is_trivial())
+    ruless -= determined
 
-    ruleset = permute_and_interfere(rules)
+    ruleset = permute_and_interfere(ruless)
     fronts = ruleset.split_fronts()
 
     trivial_fronts = set(f for f in fronts if f.is_trivial())
@@ -547,7 +550,7 @@ def solve(
     return dict(expand_cells(cell_probs, other_tag))
 
 
-def condense_supercells(rules: List[Rule]) -> Tuple[List[Rule_], List[frozenset]]:
+def condense_supercells(rules: Set[Rule]) -> Tuple[List[Rule_], List[frozenset]]:
     """condense supercells by finding sets of ordinary cells that only ever
     appear together. returns a set of 'Rule_' corresponding to the original
     ruleset.
@@ -642,8 +645,8 @@ class CellRulesMap(object):
 
     def __init__(self, rules: Union[List, Set[Rule_], frozenset] = []) -> None:
         # a mapping: cell -> list of rules cell appears in
-        self.map = collections.defaultdict(set)
-        self.rules = set()
+        self.map: Dict[frozenset, Set[Rule_]] = collections.defaultdict(set)
+        self.rules: Set = set()
         self.add_rules(rules)
 
     def add_rules(self, rules: Union[List, Set[Rule_], frozenset]) -> None:
@@ -679,7 +682,7 @@ class CellRulesMap(object):
 
         return set(_interference_edges())
 
-    def partition(self) -> Set[frozenset]:
+    def partition(self) -> Set:
         """partition the ruleset into disjoint sub-rulesets of related rules.
 
         that is, all rules in a sub-ruleset are related to each other in some
@@ -712,11 +715,11 @@ class RuleReducer(object):
 
     def __init__(self) -> None:
         # current list of rules
-        self.active_rules = set()
+        self.active_rules: Set[Rule_] = set()
         # reverse lookup for rules containing a given cell
         self.cell_rules_map = CellRulesMap()
         # current list of all possible reductions
-        self.candidate_reductions = queue.PriorityQueue()
+        self.candidate_reductions: PriorityQueue = PriorityQueue()
 
     def add_rules(self, rules: List[Rule_]) -> None:
         """add a set of rules to the ruleset"""
@@ -757,7 +760,7 @@ class RuleReducer(object):
         # we can't remove the inner contents of candidate_reductions queue; items
         # are checked for validity when they're popped
 
-    def pop_best_reduction(self) -> Reduceable:
+    def pop_best_reduction(self) -> Reduceable | None:
         """get the highest-value reduction to perform next"""
         while not self.candidate_reductions.empty():
             reduction = self.candidate_reductions.get()[1]
@@ -795,7 +798,7 @@ def permute(
     """
 
     def permu_add(*k: Tuple[frozenset, int]) -> Set[Tuple[frozenset, int]]:
-        return permu.union(k)
+        return (permu or set()).union(k)
 
     if permu is None:
         permu = set()
@@ -846,7 +849,7 @@ class PermutationSet(object):
         return (self.cells_, self.k, set_(self.permus))
 
     @staticmethod
-    def from_rule(rule: Rule_) -> Self:
+    def from_rule(rule: Rule_) -> PermutationSet:
         """build from all possible permutations of the given rule"""
         return PermutationSet(rule.cells_, rule.num_mines, set(rule.permute()))
 
@@ -858,7 +861,7 @@ class PermutationSet(object):
         this set due to conflicts"""
         return Rule_(self.k, self.cells_)
 
-    def __iter__(self) -> Iterator[Self]:
+    def __iter__(self) -> Iterator[Permutation]:
         """return an iterator over the set of permutations"""
         return self.permus.__iter__()
 
@@ -876,14 +879,14 @@ class PermutationSet(object):
         """return whether the set is empty"""
         return not self.permus
 
-    def compatible(self, permu: Permutation) -> Self:
+    def compatible(self, permu: Permutation) -> PermutationSet:
         """return a new PermutationSet containing only the Permutations that
         are compatible with the given Permutation 'permu'"""
         return PermutationSet(
             self.cells_, self.k, set(p for p in self.permus if p.compatible(permu))
         )
 
-    def subset(self, cell_subset: frozenset) -> Self:
+    def subset(self, cell_subset: frozenset) -> PermutationSet:
         """return a new PermutationSet consisting of the sub-setted
         permutations from this set"""
         permu_subset = set(p.subset(cell_subset) for p in self.permus)
@@ -893,12 +896,12 @@ class PermutationSet(object):
             raise ValueError()
         return PermutationSet(cell_subset, k_sub.pop(), permu_subset)
 
-    def decompose(self) -> List[Self]:
+    def decompose(self) -> list[PermutationSet]:
         """see _decompose(); optimizes if set has not been constrained because
         full permu-sets decompose to themselves"""
         return self._decompose() if self.constrained else [self]
 
-    def _decompose(self, k_floor: int = 1) -> List[Self]:
+    def _decompose(self, k_floor: int = 1) -> List[PermutationSet]:
         """determine if the permutation set is the cartesian product of N
         smaller permutation sets; return the decomposition if so
 
@@ -921,7 +924,7 @@ class PermutationSet(object):
 
         return [self]
 
-    def split(self, cell_subset: frozenset) -> Tuple[Self, Self]:
+    def split(self, cell_subset: frozenset) -> Tuple[PermutationSet, PermutationSet]:
         """helper function for decompose(). given a subset of cells, return
         the two permutation sets for the subset and the set of remaining
         cells, provided cell_subset is a valid decomposor; raise exception if
@@ -978,7 +981,7 @@ class EnumerationState(object):
 
         # set of Permutations -- one per rule -- that have been 'fixed' for
         # the current configuration-in-progress
-        self.fixed = set()
+        self.fixed: Set = set()
         # subset of ruleset whose permutations are still 'open'
         self.free = dict(
             (rule, set(permu_set)) for rule, permu_set in ruleset.permu_map.items()
@@ -992,7 +995,7 @@ class EnumerationState(object):
         # mapping: (permutation, overlapping rule) -> PermutationSet of valid permutations for overlapping rule
         self.compatible_rule_index = self.build_compatibility_index(ruleset.permu_map)
 
-    def clone(self) -> Self:
+    def clone(self) -> EnumerationState:
         """clone this state"""
         state = EnumerationState()
         state.fixed = set(self.fixed)
@@ -1019,7 +1022,7 @@ class EnumerationState(object):
         is complete"""
         return not self.free
 
-    def __iter__(self) -> Iterator[Self]:
+    def __iter__(self) -> Iterator[EnumerationState]:
         """pick an 'open' rule at random and 'fix' each possible permutation
         for that rule. in this manner, when done recursively, all valid
         combinations are enumerated"""
@@ -1031,13 +1034,13 @@ class EnumerationState(object):
                 # conflict detected; dead end
                 pass
 
-    def propogate(self, rule: Rule_, permu: Permutation) -> Self:
+    def propogate(self, rule: Rule_, permu: Permutation) -> EnumerationState:
         """'fix' a permutation for a given rule"""
         state = self.clone()
         state._propogate(rule, permu)
         return state
 
-    def _propogate(self, rule: Rule_, permu: Permutation) -> Any:
+    def _propogate(self, rule: Rule_, permu: Permutation) -> None:
         """'fix' a rule permutation and constrain the available permutations
         of all overlapping rules"""
         self.fixed.add(permu)
@@ -1090,11 +1093,11 @@ class FrontSubtally(object):
         # 'weight' of this sub-tally among the others in the FrontTally. initially
         # will be a raw count of the configurations in this sub-tally, but later
         # will be skewed due to weighting and normalizing factors
-        self.total = 0
+        self.total: float = 0
         # per-cell mine counts (pre-finalizing) / mine prevalence (post-finalizing)
         # mapping: supercell -> total # of mines in cell summed across all configurations (pre-finalize)
         #                    -> expected # of mines in cell (post-finalize)
-        self.tally = collections.defaultdict(lambda: 0)
+        self.tally: Dict = collections.defaultdict(lambda: 0)
 
         self.finalized = False
         self.normalized = False
@@ -1116,20 +1119,14 @@ class FrontSubtally(object):
 
     def collapse(
         self,
-    ) -> Iterator[
-        Union[
-            Iterator[Tuple[frozenset, float]],
-            Iterator[Tuple[frozenset, float]],
-            Iterator[Tuple[UnchartedCell, float]],
-        ]
-    ]:
+    ) -> Iterator[Tuple[Any, Any]]:
         """helper function for FrontTally.collapse(); emit all cell expected
         mine values weighted by this sub-tally's weight"""
         for cell_, expected_mines in self.tally.items():
             yield (cell_, self.total * expected_mines)
 
     @staticmethod
-    def mk(total: float, tally: Any) -> Self:
+    def mk(total: int | float, tally: Any) -> FrontSubtally:
         """build a sub-tally manually
 
         tally data must already be finalized"""
@@ -1260,7 +1257,7 @@ class FrontPerMineTotals(object):
         self.totals = totals
 
     @staticmethod
-    def singleton(num_mines: int, total: float) -> Self:
+    def singleton(num_mines: int, total: float) -> FrontPerMineTotals:
         return FrontPerMineTotals({num_mines: total})
 
     @property
@@ -1268,18 +1265,18 @@ class FrontPerMineTotals(object):
         """returns total # of configurations across all possible # of mines"""
         return sum(self.totals.values())
 
-    def multiply(self, n: float) -> Self:
+    def multiply(self, n: float) -> FrontPerMineTotals:
         """multiply all the configuration counts by a fixed factor"""
         return FrontPerMineTotals(
             dict((num_mines, n * count) for num_mines, count in self)
         )
 
     @staticmethod
-    def sum(front_totals: Tuple[Self, ...]) -> Self:
+    def sum(front_totals: Tuple[FrontPerMineTotals, ...]) -> FrontPerMineTotals:
         """compute an aggregate sum of several mappings"""
         return FrontPerMineTotals(map_reduce(front_totals, lambda ft: ft, sum))
 
-    def __iter__(self) -> Iterator[Self]:
+    def __iter__(self) -> Iterator[tuple[int, float]]:
         return iter(self.totals.items())
 
     def __repr__(self):
@@ -1305,14 +1302,14 @@ class AllFrontsPerMineTotals(object):
             return 1
 
     @staticmethod
-    def null() -> Self:
+    def null() -> AllFrontsPerMineTotals:
         return AllFrontsPerMineTotals([])
 
     @staticmethod
-    def singleton(num_mines: int, total: float) -> Self:
+    def singleton(num_mines: int, total: float) -> AllFrontsPerMineTotals:
         return AllFrontsPerMineTotals([FrontPerMineTotals.singleton(num_mines, total)])
 
-    def join_with(self, new: Self) -> Self:
+    def join_with(self, new: Self) -> AllFrontsPerMineTotals:
         """merge two AllFrontsPerMineTotals objects, joining into a single list and performing
         necessary cross-multiplication"""
         return AllFrontsPerMineTotals(
@@ -1321,13 +1318,13 @@ class AllFrontsPerMineTotals(object):
         )
 
     @staticmethod
-    def sum(frontsets: List[Self]) -> Self:
+    def sum(frontsets: List[AllFrontsPerMineTotals]) -> AllFrontsPerMineTotals:
         """sum a list of AllFrontsPerMineTotals objects on a per-constituent front basis"""
         return AllFrontsPerMineTotals(
             list(map(FrontPerMineTotals.sum, list(zip(*frontsets))))
         )
 
-    def __iter__(self) -> Iterator[Self]:
+    def __iter__(self) -> Iterator[FrontPerMineTotals]:
         return iter(self.front_totals)
 
     def __repr__(self):
@@ -1347,17 +1344,17 @@ class CombinedFront(object):
         self.totals = total_mines_to_front_totals
 
     @property
-    def min_max_mines(self) -> Tuple[int, int]:
+    def min_max_mines(self) -> Tuple[int, ...]:
         """return (min, max) # of mines in the front"""
         return tuple(f(list(self.totals.keys())) for f in (min, max))
 
     @staticmethod
-    def null() -> Self:
+    def null() -> CombinedFront:
         """create an 'empty' combined front"""
         return CombinedFront({0: AllFrontsPerMineTotals.null()})
 
     @staticmethod
-    def from_counts_per_num_mines(mines_with_count: Iterator) -> Self:
+    def from_counts_per_num_mines(mines_with_count: Iterator) -> CombinedFront:
         """build a starter combined front using known counts for each # of mines"""
         return CombinedFront(
             dict(
@@ -1367,7 +1364,7 @@ class CombinedFront(object):
         )
 
     @staticmethod
-    def from_tally(tally: FrontTally) -> Self:
+    def from_tally(tally: FrontTally) -> CombinedFront:
         """build a starter combined front from a front tally"""
         return CombinedFront.from_counts_per_num_mines(
             (num_mines, subtally.total) for num_mines, subtally in tally
@@ -1379,7 +1376,7 @@ class CombinedFront(object):
         max_mines: Union[int, int],
         num_uncharted_cells: int,
         max_other_mines: Union[int, int],
-    ) -> Self:
+    ) -> CombinedFront:
         """build a starter combined front to represent the 'uncharted cells' region"""
         return CombinedFront.from_counts_per_num_mines(
             (n, relative_likelihood(n, num_uncharted_cells, max_other_mines))
@@ -1393,7 +1390,7 @@ class CombinedFront(object):
         min_remaining_mines: int,
         max_remaining_mines: int,
         at_large_mines: Union[int, int],
-    ) -> Self:
+    ) -> CombinedFront:
         """combine two combined fronts. min/max remaining mines represent the total remaining mines available
         in all fronts yet to be combined (excluding 'new'). this helps avoid computing combinations whose # mines
         can never add up to the requisite # of board mines. this is also how we converge to a single total # of
@@ -1403,7 +1400,7 @@ class CombinedFront(object):
             xxx_todo_changeme: Tuple[
                 Tuple[int, AllFrontsPerMineTotals], Tuple[int, AllFrontsPerMineTotals]
             ]
-        ) -> Tuple[int, AllFrontsPerMineTotals]:
+        ) -> Tuple[int, AllFrontsPerMineTotals] | None:
             ((a_num_mines, a_fronts), (b_num_mines, b_fronts)) = xxx_todo_changeme
             combined_mines = a_num_mines + b_num_mines
             min_mines_at_end = combined_mines + min_remaining_mines
@@ -1420,12 +1417,12 @@ class CombinedFront(object):
         )
         return CombinedFront(new_totals)
 
-    def collapse(self) -> List[Dict[int, float]]:
+    def collapse(self) -> List[dict[int, float] | dict[int, int]]:
         """once all fronts combined, unwrap objects and return the underlying counts corresponding to each front"""
         assert len(self.totals) == 1
         return [e.totals for e in self.totals.popitem()[1].front_totals]
 
-    def __iter__(self) -> Iterator[Self]:
+    def __iter__(self) -> Iterator[tuple[int, AllFrontsPerMineTotals]]:
         return iter(self.totals.items())
 
     def __repr__(self):
@@ -1452,15 +1449,15 @@ def combine_fronts(
     not a part of any front, and return a meta-front encapsulating them.
     """
 
-    min_tallied_mines, max_tallied_mines = possible_mine_limits(tallies)
+    min_tallied_mines, max_tallied_mines = possible_mine_limits(set(tallies))
     min_other_mines = max(at_large_mines - max_tallied_mines, 0)
     # technically, min_tallied_mines known to be <= at_large_mines due to check_count_consistency()
     max_other_mines = min(
         max(at_large_mines - min_tallied_mines, 0), num_uncharted_cells
     )
 
-    tallies = list(tallies)  # we need guaranteed iteration order
-    all_fronts = list(map(CombinedFront.from_tally, tallies)) + [
+    tallies = set(tallies)  # we need guaranteed iteration order
+    all_fronts: list[CombinedFront] = list(map(CombinedFront.from_tally, tallies)) + [
         CombinedFront.for_other(
             min_other_mines, max_other_mines, num_uncharted_cells, max_other_mines
         )
@@ -1468,7 +1465,7 @@ def combine_fronts(
     min_remaining_mines, max_remaining_mines = list(
         map(sum, list(zip(*(f.min_max_mines for f in all_fronts))))
     )
-    combined = CombinedFront.null()
+    combined: CombinedFront = CombinedFront.null()
     for f in all_fronts:
         # note that it's only safe to use min/max mines in this way before the front has been combined/modified
         front_min, front_max = f.min_max_mines
@@ -1537,13 +1534,9 @@ class FixedProbTally(ImmutableMixin):
         return (self.p,)
 
 
-def expand_cells(cell_probs: chain, other_tag: Optional[Any]) -> Iterator[
-    Union[
-        Iterator[Tuple[None, float]],
-        Iterator[Tuple[str, float]],
-        Iterator[Tuple[str, float]],
-    ]
-]:
+def expand_cells(
+    cell_probs: chain, other_tag: Optional[Any]
+) -> Iterator[tuple[None, float]] | Iterator[tuple[str, float]]:
     """back-convert the expected values for all supercells into per-cell
     probabilities for each original cell"""
     for cell_, p in cell_probs:
