@@ -29,6 +29,43 @@ total_mines: total # of mines contained within all cells
 MineCount = collections.namedtuple("MineCount", ["total_cells", "total_mines"])
 
 
+class Rule(ImmutableMixin):
+    """basic representation of an axiom from a minesweeper game: N mines
+    contained within a set of M cells.
+
+    only used during the very early stages of the algorithm; quickly converted
+    to 'Rule_'
+
+    num_mines -- # of mines
+    cells -- list of cells; each 'cell' is a unique, identifying tag that
+        represents that cell (string, int, any hashable)
+    """
+
+    def __init__(self, num_mines: int, cells: List[str]) -> None:
+        self.num_mines = num_mines
+        self.cells = set_(cells)
+
+    def condensed(self, rule_supercells_map: Dict[Self, frozenset]) -> Rule_:
+        """condense supercells and convert to a 'Rule_'
+
+        rule_supercells_map -- pre-computed supercell mapping
+        """
+        return Rule_(
+            self.num_mines,
+            rule_supercells_map.get(self, set_()),  # default to handle degenerate rules
+            len(self.cells),
+        )
+
+    def _canonical(self) -> Tuple[int, frozenset]:
+        return (self.num_mines, self.cells)
+
+    def __repr__(self):
+        return "Rule(num_mines=%d, cells=%s)" % (
+            self.num_mines,
+            sorted(list(self.cells)),
+        )
+
+
 class Permutation(ImmutableMixin):
     """a single permutation of N mines among a set of (super)cells"""
 
@@ -475,124 +512,6 @@ class FrontTally(object):
         return str(dict(self.subtallies))
 
 
-class Rule(ImmutableMixin):
-    """basic representation of an axiom from a minesweeper game: N mines
-    contained within a set of M cells.
-
-    only used during the very early stages of the algorithm; quickly converted
-    to 'Rule_'
-
-    num_mines -- # of mines
-    cells -- list of cells; each 'cell' is a unique, identifying tag that
-        represents that cell (string, int, any hashable)
-    """
-
-    def __init__(self, num_mines: int, cells: List[str]) -> None:
-        self.num_mines = num_mines
-        self.cells = set_(cells)
-
-    def condensed(self, rule_supercells_map: Dict[Self, frozenset]) -> Rule_:
-        """condense supercells and convert to a 'Rule_'
-
-        rule_supercells_map -- pre-computed supercell mapping
-        """
-        return Rule_(
-            self.num_mines,
-            rule_supercells_map.get(self, set_()),  # default to handle degenerate rules
-            len(self.cells),
-        )
-
-    def _canonical(self) -> Tuple[int, frozenset]:
-        return (self.num_mines, self.cells)
-
-    def __repr__(self):
-        return "Rule(num_mines=%d, cells=%s)" % (
-            self.num_mines,
-            sorted(list(self.cells)),
-        )
-
-
-def solve(
-    rs: Set[Rule], mine_prevalence: MineCount, other_tag: Optional[Any] = None
-) -> Union[
-    Dict[Optional[str], Union[float, float]], Dict[str, float], Dict[str, float]
-]:
-    """solve a minesweeper board.
-
-    take in a minesweeper board and return the solution as a dict mapping each
-    cell to its probability of being a mine.
-
-    rs -- a set of 'Rule' describing the board
-    mine_prevalence -- an object describing the total expected mines on the
-        board. a MineCount indicates traditional minesweeper (fixed board
-        dimensions with a total # of mines); a float indicates a fixed
-        probability that any unknown cell is a mine (total # of mines will
-        vary for given board dimensions, in a binomial distribution)
-    other_tag -- tag used to represent all 'other' cells (all cells not
-        mentioned in a rule) in the solution output
-    """
-    rules, all_cells = condense_supercells(rs)
-    ruless = reduce_rules(rules)
-
-    determined = set(r for r in ruless if r.is_trivial())
-    ruless -= determined
-
-    ruleset = permute_and_interfere(ruless)
-    fronts = ruleset.split_fronts()
-
-    trivial_fronts = set(f for f in fronts if f.is_trivial())
-    determined |= set(f.trivial_rule() for f in trivial_fronts)
-    fronts -= trivial_fronts
-
-    stats = set(enumerate_front(f) for f in fronts)
-    stats.update(r.tally() for r in determined)
-    cell_probs = cell_probabilities(stats, mine_prevalence, all_cells)
-    return dict(expand_cells(cell_probs, other_tag))
-
-
-def condense_supercells(rules: Set[Rule]) -> Tuple[List[Rule_], List[frozenset]]:
-    """condense supercells by finding sets of ordinary cells that only ever
-    appear together. returns a set of 'Rule_' corresponding to the original
-    ruleset.
-
-    rules -- original set of 'Rule' to analyze
-
-    note that ALL cells are converted to supercells for ease of processing
-    later, even if that cell does not group with any others. the result would
-    be a singleton supercell
-    """
-
-    # for each cell, list of rules that cell appears in
-    cell_rules_map = map_reduce(
-        rules, lambda rule: [(cell, rule) for cell in rule.cells], set_
-    )
-    # for each 'list of rules appearing in', list of cells that share that ruleset (these cells
-    # thus only ever appear together in the same rules)
-    rules_supercell_map = map_reduce(
-        iter(cell_rules_map.items()),
-        lambda cell_rules: [(cell_rules[1], cell_rules[0])],
-        set_,
-    )
-    # for each original rule, list of 'supercells' appearing in that rule
-    rule_supercells_map = map_reduce(
-        iter(rules_supercell_map.items()),
-        lambda rules_cell_: [(rule, rules_cell_[1]) for rule in rules_cell_[0]],
-        set_,
-    )
-
-    return (
-        [rule.condensed(rule_supercells_map) for rule in rules],
-        list(rules_supercell_map.values()),
-    )
-
-
-def reduce_rules(rules: List[Rule_]) -> Set[Rule_]:
-    """reduce ruleset using logical deduction"""
-    rr = RuleReducer()
-    rr.add_rules(rules)
-    return rr.reduce_all()
-
-
 class Reduceable(ImmutableMixin):
     """during the logical deduction phase, if all rules are nodes in a graph,
     this represents a directed edge in that graph indicating 'superrule' can
@@ -956,15 +875,6 @@ class PermutationSet(object):
 
     def __repr__(self):
         return str(list(self.permus))
-
-
-def permute_and_interfere(rules: Set[Rule_]) -> PermutedRuleset:
-    """process the set of rules and analyze the relationships and constraints
-    among them"""
-    ruleset = PermutedRuleset(rules)
-    ruleset.cross_eliminate()
-    ruleset.rereduce()
-    return ruleset
 
 
 class EnumerationState(object):
@@ -1542,3 +1452,93 @@ def expand_cells(
     for cell_, p in cell_probs:
         for cell in cell_:
             yield (cell if cell is not None else other_tag, p / len(cell_))
+
+
+def permute_and_interfere(rules: Set[Rule_]) -> PermutedRuleset:
+    """process the set of rules and analyze the relationships and constraints
+    among them"""
+    ruleset = PermutedRuleset(rules)
+    ruleset.cross_eliminate()
+    ruleset.rereduce()
+    return ruleset
+
+
+def reduce_rules(rules: List[Rule_]) -> Set[Rule_]:
+    """reduce ruleset using logical deduction"""
+    rr = RuleReducer()
+    rr.add_rules(rules)
+    return rr.reduce_all()
+
+
+def condense_supercells(rules: Set[Rule]) -> Tuple[List[Rule_], List[frozenset]]:
+    """condense supercells by finding sets of ordinary cells that only ever
+    appear together. returns a set of 'Rule_' corresponding to the original
+    ruleset.
+
+    rules -- original set of 'Rule' to analyze
+
+    note that ALL cells are converted to supercells for ease of processing
+    later, even if that cell does not group with any others. the result would
+    be a singleton supercell
+    """
+
+    # for each cell, list of rules that cell appears in
+    cell_rules_map = map_reduce(
+        rules, lambda rule: [(cell, rule) for cell in rule.cells], set_
+    )
+    # for each 'list of rules appearing in', list of cells that share that ruleset (these cells
+    # thus only ever appear together in the same rules)
+    rules_supercell_map = map_reduce(
+        iter(cell_rules_map.items()),
+        lambda cell_rules: [(cell_rules[1], cell_rules[0])],
+        set_,
+    )
+    # for each original rule, list of 'supercells' appearing in that rule
+    rule_supercells_map = map_reduce(
+        iter(rules_supercell_map.items()),
+        lambda rules_cell_: [(rule, rules_cell_[1]) for rule in rules_cell_[0]],
+        set_,
+    )
+
+    return (
+        [rule.condensed(rule_supercells_map) for rule in rules],
+        list(rules_supercell_map.values()),
+    )
+
+
+def solve(
+    rs: Set[Rule], mine_prevalence: MineCount, other_tag: Optional[Any] = None
+) -> Union[
+    Dict[Optional[str], Union[float, float]], Dict[str, float], Dict[str, float]
+]:
+    """solve a minesweeper board.
+
+    take in a minesweeper board and return the solution as a dict mapping each
+    cell to its probability of being a mine.
+
+    rs -- a set of 'Rule' describing the board
+    mine_prevalence -- an object describing the total expected mines on the
+        board. a MineCount indicates traditional minesweeper (fixed board
+        dimensions with a total # of mines); a float indicates a fixed
+        probability that any unknown cell is a mine (total # of mines will
+        vary for given board dimensions, in a binomial distribution)
+    other_tag -- tag used to represent all 'other' cells (all cells not
+        mentioned in a rule) in the solution output
+    """
+    rules, all_cells = condense_supercells(rs)
+    ruless = reduce_rules(rules)
+
+    determined = set(r for r in ruless if r.is_trivial())
+    ruless -= determined
+
+    ruleset = permute_and_interfere(ruless)
+    fronts = ruleset.split_fronts()
+
+    trivial_fronts = set(f for f in fronts if f.is_trivial())
+    determined |= set(f.trivial_rule() for f in trivial_fronts)
+    fronts -= trivial_fronts
+
+    stats = set(enumerate_front(f) for f in fronts)
+    stats.update(r.tally() for r in determined)
+    cell_probs = cell_probabilities(stats, mine_prevalence, all_cells)
+    return dict(expand_cells(cell_probs, other_tag))

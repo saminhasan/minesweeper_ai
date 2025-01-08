@@ -12,48 +12,18 @@ levels = {
 }
 
 
-class CustomColormap:
-    def __init__(self):
-        """
-        Initializes a Green-Yellow-Orange-Red colormap with pre-defined RGB values.
-        """
-        self.colors = [
-            (0, 255, 0),  # Green
-            (255, 255, 0),  # Yellow
-            (255, 128, 0),  # Orange
-            (255, 0, 0),  # Red
-        ]
-        self.num_segments = len(self.colors) - 1
+def get_rgb(value: float) -> Tuple[int, int, int]:
+    """
+    Maps a value in [0, 1] to an RGB color.
+    Parameters:
+        value (float): A value between 0 and 1.
+    Returns:
+        Tuple[int, int, int]: RGB color as integers in the range [0, 255].
+    """
+    if not 0 <= value <= 1:
+        raise ValueError("Value must be between 0 and 1")
 
-    def get_rgb(self, value: float) -> Tuple[int, int, int]:
-        """
-        Maps a value in [0, 1] to an RGB color.
-        Parameters:
-            value (float): A value between 0 and 1.
-        Returns:
-            Tuple[int, int, int]: RGB color as integers in the range [0, 255].
-        """
-        if not 0 <= value <= 1:
-            raise ValueError("Value must be between 0 and 1")
-
-        # Scale value to the number of segments
-        scaled_value = value * self.num_segments
-        idx = int(scaled_value)  # Find the segment index
-        t = scaled_value - idx  # Fractional part within the segment
-
-        # Get the start and end colors for interpolation
-        color1 = self.colors[idx]
-        color2 = self.colors[min(idx + 1, self.num_segments)]
-
-        # Linear interpolation for each RGB channel
-        r = int((1 - t) * color1[0] + t * color2[0])
-        g = int((1 - t) * color1[1] + t * color2[1])
-        b = int((1 - t) * color1[2] + t * color2[2])
-
-        return r, g, b
-
-
-colormap = CustomColormap()
+    return (int(255 * (2 * value)) if value <= 0.5 else 255, 255 if value <= 0.5 else int(255 * (2 * (1 - value))), 0)
 
 
 class GUI:
@@ -168,30 +138,20 @@ class GUI:
             else:
                 main_text = "Game Won, Press 'R' to Restart"
 
-            main_text_surface = font.render(
-                main_text, True, (255, 255, 255)
-            )  # White text
-            main_text_rect = main_text_surface.get_rect(
-                center=(self.width // 2, self.height // 3)
-            )
+            main_text_surface = font.render(main_text, True, (255, 255, 255))  # White text
+            main_text_rect = main_text_surface.get_rect(center=(self.width // 2, self.height // 3))
 
             # Render current level and difficulty options
             sub_font_size = font_size
             sub_font = pygame.font.Font(None, sub_font_size)
 
-            level_text = (
-                f"Current Level: {self.level.capitalize()}"  # Capitalize level string
-            )
+            level_text = f"Current Level: {self.level.capitalize()}"  # Capitalize level string
             level_surface = sub_font.render(level_text, True, (255, 255, 255))
-            level_rect = level_surface.get_rect(
-                center=(self.width // 2, self.height // 2)
-            )
+            level_rect = level_surface.get_rect(center=(self.width // 2, self.height // 2))
 
             options_text = "Press 1 - Easy, 2 - Intermediate, 3 - Hard"
             options_surface = sub_font.render(options_text, True, (255, 255, 255))
-            options_rect = options_surface.get_rect(
-                center=(self.width // 2, (2 * self.height) // 3)
-            )
+            options_rect = options_surface.get_rect(center=(self.width // 2, (2 * self.height) // 3))
 
             # Draw everything
             self.screen.blit(main_text_surface, main_text_rect)
@@ -230,9 +190,7 @@ class GUI:
                             border_radius=corner_radius,
                         )
                         if cell["mine_count"] > 0:
-                            text_surface = self.font.render(
-                                f"{cell['mine_count']}", True, self.text_color
-                            )
+                            text_surface = self.font.render(f"{cell['mine_count']}", True, self.text_color)
                             text_rect = text_surface.get_rect(
                                 center=(
                                     rect_x + rect_size // 2,
@@ -267,7 +225,7 @@ class GUI:
                             text_surface = self.font.render(
                                 f"{self.probability[row][col]:.2f}",
                                 True,
-                                colormap.get_rgb(self.probability[row][col]),
+                                get_rgb(self.probability[row][col]),
                             )
                             text_rect = text_surface.get_rect(
                                 center=(
