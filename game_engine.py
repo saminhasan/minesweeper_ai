@@ -2,7 +2,7 @@ import random
 import string
 from enum import Enum
 from solver import Rule, MineCount, solve
-from typing import Any, Set, Dict, List, Tuple
+from typing import Tuple, Dict, List, Set, Union
 
 # Type-hinted dictionary for game modes
 game_mode: Dict[str, Dict[str, int]] = {
@@ -14,9 +14,9 @@ game_mode: Dict[str, Dict[str, int]] = {
 
 
 class State(Enum):
-    UNCOVERED: int = 0
-    COVERED: int = -1
-    FLAGGED: int = 1
+    UNCOVERED = 0
+    COVERED = -1
+    FLAGGED = 1
 
 
 class TagGenerator:
@@ -49,7 +49,7 @@ class Minesweeper:
     def __init__(self, difficulty: str) -> None:
         self.game_over: bool = False
         self.game_won: bool = False
-        self.states: Enum = State
+        self.states: type[State] = State
         self.n_rows: int = game_mode[difficulty]["rows"]
         self.n_cols: int = game_mode[difficulty]["columns"]
         self.shape: Tuple[int, int] = (self.n_rows, self.n_cols)
@@ -151,8 +151,8 @@ class Minesweeper:
                     neighbors.append((x, y))
         return neighbors
 
-    def create_rules_from_minefield(self) -> List[Any]:
-        rules: List[Any] = []
+    def create_rules_from_minefield(self) -> Set[Rule]:
+        rules: Set[Rule] = set()
         tags: Dict[Tuple[int, int], str] = {}
         tag_generator: TagGenerator = TagGenerator()
         self.tag_to_index: Dict[str, Tuple[int, int]] = {}
@@ -177,11 +177,13 @@ class Minesweeper:
 
                     if covered_neighbors:
                         # Create a rule like: "sum of these covered neighbors = mine_count"
-                        rules.append(Rule(mine_count, covered_neighbors))
+                        rules.add(Rule(mine_count, covered_neighbors))
 
         return rules
 
-    def decode_solution(self, solution: Dict[str, float]) -> Tuple[Dict[Tuple[int, int], float], List[List[float]]]:
+    def decode_solution(
+        self, solution: Dict[Union[str, None], float]
+    ) -> Tuple[Dict[Tuple[int, int], float], List[List[float]]]:
         """
         Returns:
             decoded_solution: A dict mapping (row, col) -> probability
@@ -190,10 +192,7 @@ class Minesweeper:
         decoded_solution: Dict[Tuple[int, int], float] = {}
 
         # 1) Determine the default value for each cell (e.g., 0.0 if solution[None] not present)
-        try:
-            default_prob = solution[None]
-        except KeyError:
-            default_prob = 0.0
+        default_prob: float = solution.get(None, 0.0)
 
         # 2) Create a 2D list initialized with this default probability
         probability_array: List[List[float]] = [[default_prob for _ in range(self.n_cols)] for _ in range(self.n_rows)]
@@ -214,11 +213,13 @@ class Minesweeper:
             - decoded_solution: dict of (row, col) -> probability
             - probability_array: 2D list of probabilities
         """
-        rules: List[Any] = self.create_rules_from_minefield()
+        rules: Set[Rule] = self.create_rules_from_minefield()
         total_cells: int = self.n_rows * self.n_cols
 
         # 'solve' is presumably an external function that returns a dict like {tag: probability, ...}
-        results = solve(rules, MineCount(total_cells=total_cells, total_mines=self.n_mines))
+        results: dict[str | None, float] | dict[str, float] = solve(
+            rules, MineCount(total_cells=total_cells, total_mines=self.n_mines)
+        )
 
         return self.decode_solution(results)
 

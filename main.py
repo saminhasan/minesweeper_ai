@@ -1,10 +1,11 @@
 import asyncio
 import pygame as pg
 import pygame.locals
-from typing import Tuple
+from typing import Tuple, Dict
 from game_engine import Minesweeper
 
-levels = {
+# TODO : ADD flagging and H for help to turn bayes on or off
+levels: Dict = {
     0: "test",
     1: "easy",
     2: "intermediate",
@@ -27,20 +28,22 @@ def get_rgb(value: float) -> Tuple[int, int, int]:
 
 
 FONT_SIZE = 20
+CELL_SIZE = 56
+LW = 1
 
 
 class GUI:
     def __init__(self, level: str):
-        self.level = levels[level]  # Store the level for resetting the game
+        self.level: str = levels[level]  # Store the level for resetting the game
         self.initialize_game()
 
     def initialize_game(self):
         self.board = Minesweeper(self.level)  # Calculate dimensions
         # self.board.random_safe_reveal()
         _, self.probability = self.board.solve_minefield()
-        self.cell_size = 56
+        self.cell_size = CELL_SIZE
         self.rect_size = int(self.cell_size)
-        self.line_width = 1
+        self.line_width = LW
         vlines = self.board.n_cols + 1
         hlines = self.board.n_rows + 1
         self.width = (self.cell_size * self.board.n_cols) + (vlines * self.line_width)
@@ -49,7 +52,7 @@ class GUI:
         # Define colors
         self.mine_color = (255, 0, 0)  # Red for mines
         self.uncovered_color = (0, 0, 0)  # Black for uncovered cells
-        self.covered_color = (50, 50, 50)  # Light grey for covered cells
+        self.covered_color = (80, 80, 80)  # Light grey for covered cells
         self.text_color = (220, 220, 220)  # White text
         self.line_color = (30, 30, 30)  # White color for lines
 
@@ -60,9 +63,11 @@ class GUI:
 
         pg.init()
         pg.font.init()
-        self.mine_image: pg.Surface = pg.image.load("minesweeper_icon.png")  # Load icon image
+        self.mine_image: pg.Surface = pg.image.load("mine.png")  # Load icon image
         # Scale the mine image to fit the cell size
         self.scaled_mine_image = pg.transform.scale(self.mine_image, (self.cell_size, self.cell_size))
+        self.flag_image = pg.image.load("flag.png")
+        self.scaled_flag_image = pg.transform.scale(self.flag_image, (self.cell_size // 1.5, self.cell_size // 1.5))
         pg.display.set_icon(self.mine_image)  # Set the icon for the window
         self.font = pg.font.Font(None, FONT_SIZE)  # Default font in PyGBag
         self.overlay_font = pg.font.Font(None, min(self.width // 15, self.height // 15))
@@ -120,10 +125,11 @@ class GUI:
         # Check for game over or won condition
         if self.board.game_won:
             self.draw_cells()
+            self.draw_flags()
             main_text = "Game Won, Press 'R' to Restart"
             # Create a transparent overlay surface
             overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
-            overlay.fill((0, 128, 0, 128))  # Semi-transparent green background
+            overlay.fill((0, 64, 0, 64))  # Semi-transparent green background
             self.screen.blit(overlay, (0, 0))
 
         elif self.board.game_over:
@@ -131,11 +137,12 @@ class GUI:
             main_text = "Game Over, Press 'R' to Restart"
             # Create a transparent overlay surface
             overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
-            overlay.fill((128, 0, 0, 128))  # Semi-transparent green background
+            overlay.fill((64, 0, 0, 64))  # Semi-transparent green background
             self.screen.blit(overlay, (0, 0))
 
         else:
             self.draw_cells()
+            self.draw_bayes()
             return
 
         # Render main message
@@ -157,9 +164,39 @@ class GUI:
 
     def draw_cells(self):
         # Other parameters
-        corner_radius = self.cell_size // 5  # self.cell_size // 10
-        offset = 5  # Small offset to create a black border
+        corner_radius = self.cell_size // 5
+        offset = 5
 
+        # Draw the cells
+        for row in range(self.board.n_rows):
+            for col in range(self.board.n_cols):
+                x = col * (self.cell_size + self.line_width) + self.line_width
+                y = row * (self.cell_size + self.line_width) + self.line_width
+                cell = self.board.minefield[row][col]
+                rect_x, rect_y = x + offset, y + offset
+                rect_size = self.cell_size - (2 * offset)
+                if cell["state"] == self.board.states.COVERED.value:
+                    pg.draw.rect(
+                        self.screen,
+                        self.covered_color,
+                        (rect_x, rect_y, rect_size, rect_size),
+                        border_radius=corner_radius,
+                    )
+                if cell["state"] == self.board.states.UNCOVERED.value:
+                    if cell["mine_count"] > 0:
+                        text_surface = self.font.render(f"{cell['mine_count']}", True, self.text_color)
+                        text_rect = text_surface.get_rect(
+                            center=(
+                                rect_x + rect_size // 2,
+                                rect_y + rect_size // 2,
+                            )
+                        )
+                        self.screen.blit(text_surface, text_rect)
+
+    def draw_bayes(self):
+        # Other parameters
+        corner_radius = self.cell_size // 5
+        offset = 5
         # Draw the cells
         for row in range(self.board.n_rows):
             for col in range(self.board.n_cols):
@@ -171,32 +208,7 @@ class GUI:
                 rect_x, rect_y = x + offset, y + offset
                 rect_size = self.cell_size - (2 * offset)
 
-                if cell["state"] == self.board.states.UNCOVERED.value:
-                    if cell["mine_count"] == -1:
-                        pg.draw.rect(
-                            self.screen,
-                            self.mine_color,
-                            (rect_x, rect_y, rect_size, rect_size),
-                            border_radius=corner_radius,
-                        )
-                    else:
-                        pg.draw.rect(
-                            self.screen,
-                            self.uncovered_color,
-                            (rect_x, rect_y, rect_size, rect_size),
-                            border_radius=corner_radius,
-                        )
-                        if cell["mine_count"] > 0:
-                            text_surface = self.font.render(f"{cell['mine_count']}", True, self.text_color)
-                            text_rect = text_surface.get_rect(
-                                center=(
-                                    rect_x + rect_size // 2,
-                                    rect_y + rect_size // 2,
-                                )
-                            )
-                            self.screen.blit(text_surface, text_rect)
-
-                else:
+                if not cell["state"] == self.board.states.UNCOVERED.value:
                     if self.probability is not None:
                         if self.probability[row][col] == 0:
                             pg.draw.rect(
@@ -284,6 +296,28 @@ class GUI:
                     center_y = rect_y + rect_size // 2 - self.scaled_mine_image.get_height() // 2
 
                     self.screen.blit(self.scaled_mine_image, (center_x, center_y))
+
+    def draw_flags(self):
+        """
+        Draw the mines on the Minesweeper board.
+        """
+
+        # Draw the mines
+        for row in range(self.board.n_rows):
+            for col in range(self.board.n_cols):
+                x = col * (self.cell_size + self.line_width) + self.line_width
+                y = row * (self.cell_size + self.line_width) + self.line_width
+                cell = self.board.minefield[row][col]
+                rect_x, rect_y = x, y
+                rect_size = self.cell_size
+
+                # Check if the cell contains a mine
+                if cell["mine_count"] == -1:
+                    # Center the mine image within the cell
+                    center_x = rect_x + rect_size // 2 - self.scaled_flag_image.get_width() // 2
+                    center_y = rect_y + rect_size // 2 - self.scaled_flag_image.get_height() // 2
+
+                    self.screen.blit(self.scaled_flag_image, (center_x, center_y))
 
     def quit(self):
         self.running = False
