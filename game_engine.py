@@ -57,20 +57,14 @@ class Minesweeper:
 
         # Replace NumPy array with a list of lists of dicts.
         self.minefield = [
-            [
-                {"mine_count": 0, "state": self.states.COVERED.value}
-                for _ in range(self.n_cols)
-            ]
-            for _ in range(self.n_rows)
+            [{"mine_count": 0, "state": self.states.COVERED.value} for _ in range(self.n_cols)] for _ in range(self.n_rows)
         ]
 
         self.mines: Set[Tuple[int, int]] = set()
         self.place_mines()
 
     def place_mines(self) -> None:
-        indices: List[Tuple[int, int]] = [
-            (r, c) for r in range(self.n_rows) for c in range(self.n_cols)
-        ]
+        indices: List[Tuple[int, int]] = [(r, c) for r in range(self.n_rows) for c in range(self.n_cols)]
 
         mine_indices: List[Tuple[int, int]] = random.sample(indices, self.n_mines)
 
@@ -118,8 +112,7 @@ class Minesweeper:
             (i, j)
             for i in range(self.n_rows)
             for j in range(self.n_cols)
-            if self.minefield[i][j]["state"] == State.COVERED.value
-            and self.minefield[i][j]["mine_count"] != -1
+            if self.minefield[i][j]["state"] == State.COVERED.value and self.minefield[i][j]["mine_count"] != -1
         ]
 
         if not safe_cells:
@@ -131,6 +124,7 @@ class Minesweeper:
         self.reveal(i, j)
 
     def reveal_all_mines(self) -> None:
+        print("boom")
         # For each mine location, mark its state as UNCOVERED
         for i, j in self.mines:
             self.minefield[i][j]["state"] = State.UNCOVERED.value
@@ -173,10 +167,7 @@ class Minesweeper:
                     for x, y in neighbors:
                         # Check if the neighbor is COVERED or FLAGGED
                         neighbor_state = self.minefield[x][y]["state"]
-                        if (
-                            neighbor_state == State.COVERED.value
-                            or neighbor_state == State.FLAGGED.value
-                        ):
+                        if neighbor_state == State.COVERED.value or neighbor_state == State.FLAGGED.value:
                             # Assign a unique tag to this neighbor if needed
                             if (x, y) not in tags:
                                 tag: str = tag_generator.next_tag()
@@ -190,9 +181,7 @@ class Minesweeper:
 
         return rules
 
-    def decode_solution(
-        self, solution: Dict[str, float]
-    ) -> Tuple[Dict[Tuple[int, int], float], List[List[float]]]:
+    def decode_solution(self, solution: Dict[str, float]) -> Tuple[Dict[Tuple[int, int], float], List[List[float]]]:
         """
         Returns:
             decoded_solution: A dict mapping (row, col) -> probability
@@ -207,9 +196,7 @@ class Minesweeper:
             default_prob = 0.0
 
         # 2) Create a 2D list initialized with this default probability
-        probability_array: List[List[float]] = [
-            [default_prob for _ in range(self.n_cols)] for _ in range(self.n_rows)
-        ]
+        probability_array: List[List[float]] = [[default_prob for _ in range(self.n_cols)] for _ in range(self.n_rows)]
 
         # 3) Fill in specific probabilities for tags that exist
         for tag, probability in solution.items():
@@ -231,9 +218,7 @@ class Minesweeper:
         total_cells: int = self.n_rows * self.n_cols
 
         # 'solve' is presumably an external function that returns a dict like {tag: probability, ...}
-        results = solve(
-            rules, MineCount(total_cells=total_cells, total_mines=self.n_mines)
-        )
+        results = solve(rules, MineCount(total_cells=total_cells, total_mines=self.n_mines))
 
         return self.decode_solution(results)
 

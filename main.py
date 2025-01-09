@@ -26,6 +26,9 @@ def get_rgb(value: float) -> Tuple[int, int, int]:
     return (int(255 * (2 * value)) if value <= 0.5 else 255, 255 if value <= 0.5 else int(255 * (2 * (1 - value))), 0)
 
 
+FONT_SIZE = 20
+
+
 class GUI:
     def __init__(self, level: str):
         self.level = levels[level]  # Store the level for resetting the game
@@ -57,9 +60,12 @@ class GUI:
 
         pg.init()
         pg.font.init()
-        # self.font = pg.font.Font(None, 18)  # Default font in PyGBag
-
-        self.font = pg.font.SysFont("dseg7classicregular", 16)
+        self.mine_image: pg.Surface = pg.image.load("minesweeper_icon.png")  # Load icon image
+        # Scale the mine image to fit the cell size
+        self.scaled_mine_image = pg.transform.scale(self.mine_image, (self.cell_size, self.cell_size))
+        pg.display.set_icon(self.mine_image)  # Set the icon for the window
+        self.font = pg.font.Font(None, FONT_SIZE)  # Default font in PyGBag
+        self.overlay_font = pg.font.Font(None, min(self.width // 15, self.height // 15))
         self.clock = pg.time.Clock()
         self.screen = pg.display.set_mode((self.width, self.height))
         pg.display.set_caption("Minesweeper")
@@ -82,19 +88,8 @@ class GUI:
         if key == pg.K_r:  # Check if 'R' key is pressed
             self.reset_game()
 
-        if key == pg.K_0:
-            self.level = levels[0]
-            self.reset_game()
-        if key == pg.K_1:
-            self.level = levels[1]
-            self.reset_game()
-
-        if key == pg.K_2:
-            self.level = levels[2]
-            self.reset_game()
-
-        if key == pg.K_3:
-            self.level = levels[3]
+        if key in [pg.K_0, pg.K_1, pg.K_2, pg.K_3]:
+            self.level = levels[key - pg.K_0]
             self.reset_game()
 
         else:
@@ -105,58 +100,60 @@ class GUI:
     def handle_mouse_event(self, event):
 
         if not self.board.game_over or self.board.game_won:
-
-            col = (event.pos[0] - self.line_width) // (self.cell_size + self.line_width)
-            row = (event.pos[1] - self.line_width) // (self.cell_size + self.line_width)
-
-            # Check if the click is within the bounds of the board
-            if 0 <= row < self.board.n_rows and 0 <= col < self.board.n_cols:
-                if event.type == pg.MOUSEBUTTONDOWN:
-                    if event.button == pg.BUTTON_LEFT:  # Left click
-                        self.board.reveal(row, col)
-
-        if not (self.board.game_over or self.board.game_won):
-            _, self.probability = self.board.solve_minefield()
+            if event.type == pg.MOUSEBUTTONDOWN:
+                if event.button == pg.BUTTON_LEFT:  # Left click
+                    col = (event.pos[0] - self.line_width) // (self.cell_size + self.line_width)
+                    row = (event.pos[1] - self.line_width) // (self.cell_size + self.line_width)
+                    # Check if the click is within the bounds of the board
+                    if 0 <= row < self.board.n_rows and 0 <= col < self.board.n_cols:
+                        if self.board.minefield[row][col]["mine_count"] == -1:
+                            self.board.reveal_all_mines()
+                            print("Game Over")
+                        else:
+                            self.board.reveal(row, col)
+                            _, self.probability = self.board.solve_minefield()
 
     def draw(self):
         self.screen.fill([0, 0, 0])  # Background color
-        self.draw_cells()
         self.draw_lines()
+
         # Check for game over or won condition
-        if self.board.game_won or self.board.game_over:
+        if self.board.game_won:
+            self.draw_cells()
+            main_text = "Game Won, Press 'R' to Restart"
             # Create a transparent overlay surface
             overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 128))  # Semi-transparent black background
+            overlay.fill((0, 128, 0, 128))  # Semi-transparent green background
             self.screen.blit(overlay, (0, 0))
 
-            # Render main message
-            font_size = min(self.width // 15, self.height // 15)  # Dynamic font size
-            font = pygame.font.Font(None, font_size)
+        elif self.board.game_over:
+            self.draw_mines()
+            main_text = "Game Over, Press 'R' to Restart"
+            # Create a transparent overlay surface
+            overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+            overlay.fill((128, 0, 0, 128))  # Semi-transparent green background
+            self.screen.blit(overlay, (0, 0))
 
-            if self.board.game_over:
-                main_text = "Game Over, Press 'R' to Restart"
-            else:
-                main_text = "Game Won, Press 'R' to Restart"
+        else:
+            self.draw_cells()
+            return
 
-            main_text_surface = font.render(main_text, True, (255, 255, 255))  # White text
-            main_text_rect = main_text_surface.get_rect(center=(self.width // 2, self.height // 3))
+        # Render main message
+        main_text_surface = self.overlay_font.render(main_text, True, (255, 255, 255))  # White text
+        main_text_rect = main_text_surface.get_rect(center=(self.width // 2, self.height // 3))
 
-            # Render current level and difficulty options
-            sub_font_size = font_size
-            sub_font = pygame.font.Font(None, sub_font_size)
+        level_text = f"Current Level: {self.level.capitalize()}"  # Capitalize level string
+        level_surface = self.overlay_font.render(level_text, True, (255, 255, 255))
+        level_rect = level_surface.get_rect(center=(self.width // 2, self.height // 2))
 
-            level_text = f"Current Level: {self.level.capitalize()}"  # Capitalize level string
-            level_surface = sub_font.render(level_text, True, (255, 255, 255))
-            level_rect = level_surface.get_rect(center=(self.width // 2, self.height // 2))
+        options_text = "Press 1 - Easy, 2 - Intermediate, 3 - Hard"
+        options_surface = self.overlay_font.render(options_text, True, (255, 255, 255))
+        options_rect = options_surface.get_rect(center=(self.width // 2, (2 * self.height) // 3))
 
-            options_text = "Press 1 - Easy, 2 - Intermediate, 3 - Hard"
-            options_surface = sub_font.render(options_text, True, (255, 255, 255))
-            options_rect = options_surface.get_rect(center=(self.width // 2, (2 * self.height) // 3))
-
-            # Draw everything
-            self.screen.blit(main_text_surface, main_text_rect)
-            self.screen.blit(level_surface, level_rect)
-            self.screen.blit(options_surface, options_rect)
+        # Draw everything
+        self.screen.blit(main_text_surface, main_text_rect)
+        self.screen.blit(level_surface, level_rect)
+        self.screen.blit(options_surface, options_rect)
 
     def draw_cells(self):
         # Other parameters
@@ -265,6 +262,28 @@ class GUI:
                     (x_end - gap_size, y),
                     self.line_width,
                 )
+
+    def draw_mines(self):
+        """
+        Draw the mines on the Minesweeper board.
+        """
+
+        # Draw the mines
+        for row in range(self.board.n_rows):
+            for col in range(self.board.n_cols):
+                x = col * (self.cell_size + self.line_width) + self.line_width
+                y = row * (self.cell_size + self.line_width) + self.line_width
+                cell = self.board.minefield[row][col]
+                rect_x, rect_y = x, y
+                rect_size = self.cell_size
+
+                # Check if the cell contains a mine
+                if cell["mine_count"] == -1:
+                    # Center the mine image within the cell
+                    center_x = rect_x + rect_size // 2 - self.scaled_mine_image.get_width() // 2
+                    center_y = rect_y + rect_size // 2 - self.scaled_mine_image.get_height() // 2
+
+                    self.screen.blit(self.scaled_mine_image, (center_x, center_y))
 
     def quit(self):
         self.running = False
