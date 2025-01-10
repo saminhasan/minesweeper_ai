@@ -1,10 +1,14 @@
 import asyncio
 import pygame as pg
 import pygame.locals
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Set
 from game_engine import Minesweeper
 
-# TODO : ADD flagging and H for help to turn bayes on or off
+
+FONT_SIZE: int = 20
+CELL_SIZE: int = 56
+LW: int = 1
+
 levels: Dict = {
     0: "test",
     1: "easy",
@@ -27,20 +31,15 @@ def get_rgb(value: float) -> Tuple[int, int, int]:
     return (int(255 * (2 * value)) if value <= 0.5 else 255, 255 if value <= 0.5 else int(255 * (2 * (1 - value))), 0)
 
 
-FONT_SIZE = 20
-CELL_SIZE = 56
-LW = 1
-
-
 class GUI:
     def __init__(self, level: str):
         self.level: str = levels[level]  # Store the level for resetting the game
         self.initialize_game()
 
     def initialize_game(self):
+        self.help = False
         self.board = Minesweeper(self.level)  # Calculate dimensions
         # self.board.random_safe_reveal()
-        _, self.probability = self.board.solve_minefield()
         self.cell_size = CELL_SIZE
         self.rect_size = int(self.cell_size)
         self.line_width = LW
@@ -74,10 +73,7 @@ class GUI:
         self.clock = pg.time.Clock()
         self.screen = pg.display.set_mode((self.width, self.height))
         pg.display.set_caption("Minesweeper")
-
-        self.key_event_handlers = {
-            pg.locals.K_ESCAPE: self.quit,
-        }
+        self.flagged: Set[Tuple[int, int]] = set()
 
     def handle_events(self):
         for event in pg.event.get():
@@ -90,33 +86,47 @@ class GUI:
                 self.handle_mouse_event(event)
 
     def handle_key_event(self, key):
-        if key == pg.K_r:  # Check if 'R' key is pressed
+        if key == pg.K_r:
             self.reset_game()
+        elif key == pg.K_h:
+            self.help = not self.help
+            if self.help:
+                _, self.probability = self.board.solve_minefield()
 
-        if key in [pg.K_0, pg.K_1, pg.K_2, pg.K_3]:
+        elif key in [pg.K_0, pg.K_1, pg.K_2, pg.K_3]:
             self.level = levels[key - pg.K_0]
             self.reset_game()
-
         else:
             handler = self.key_event_handlers.get(key)
             if handler:
                 handler()
 
     def handle_mouse_event(self, event):
-
         if not self.board.game_over or self.board.game_won:
             if event.type == pg.MOUSEBUTTONDOWN:
-                if event.button == pg.BUTTON_LEFT:  # Left click
-                    col = (event.pos[0] - self.line_width) // (self.cell_size + self.line_width)
-                    row = (event.pos[1] - self.line_width) // (self.cell_size + self.line_width)
-                    # Check if the click is within the bounds of the board
-                    if 0 <= row < self.board.n_rows and 0 <= col < self.board.n_cols:
-                        if self.board.minefield[row][col]["mine_count"] == -1:
-                            self.board.reveal_all_mines()
-                            print("Game Over")
+                col = (event.pos[0] - self.line_width) // (self.cell_size + self.line_width)
+                row = (event.pos[1] - self.line_width) // (self.cell_size + self.line_width)
+                # Check if the click is within the bounds of the board
+                if 0 <= row < self.board.n_rows and 0 <= col < self.board.n_cols:
+                    if event.button == pg.BUTTON_LEFT:  # Left click
+                        if (row, col) not in self.flagged:
+                            if self.board.minefield[row][col]["mine_count"] == -1:
+                                self.board.reveal_all_mines()
+                                print("Game Over")
+                            else:
+                                self.board.reveal(row, col)
+                                _, self.probability = self.board.solve_minefield()
+                                self.flagged = {
+                                    flag
+                                    for flag in self.flagged
+                                    if self.board.minefield[flag[0]][flag[1]]["state"] != self.board.states.UNCOVERED
+                                }
+
+                    if event.button == pg.BUTTON_RIGHT:
+                        if (row, col) not in self.flagged:
+                            self.flagged.add((row, col))
                         else:
-                            self.board.reveal(row, col)
-                            _, self.probability = self.board.solve_minefield()
+                            self.flagged.discard((row, col))
 
     def draw(self):
         self.screen.fill([0, 0, 0])  # Background color
@@ -175,14 +185,21 @@ class GUI:
                 cell = self.board.minefield[row][col]
                 rect_x, rect_y = x + offset, y + offset
                 rect_size = self.cell_size - (2 * offset)
-                if cell["state"] == self.board.states.COVERED.value:
+                if cell["state"] == self.board.states.COVERED:
                     pg.draw.rect(
                         self.screen,
                         self.covered_color,
                         (rect_x, rect_y, rect_size, rect_size),
                         border_radius=corner_radius,
                     )
-                if cell["state"] == self.board.states.UNCOVERED.value:
+                    # Check if the cell is flagged
+                    if (row, col) in self.flagged:
+                        # Center the flag image within the cell
+                        center_x = rect_x + rect_size // 2 - self.scaled_flag_image.get_width() // 2
+                        center_y = rect_y + rect_size // 2 - self.scaled_flag_image.get_height() // 2
+
+                        self.screen.blit(self.scaled_flag_image, (center_x, center_y))
+                if cell["state"] == self.board.states.UNCOVERED:
                     if cell["mine_count"] > 0:
                         text_surface = self.font.render(f"{cell['mine_count']}", True, self.text_color)
                         text_rect = text_surface.get_rect(
@@ -194,56 +211,55 @@ class GUI:
                         self.screen.blit(text_surface, text_rect)
 
     def draw_bayes(self):
-        # Other parameters
-        corner_radius = self.cell_size // 5
-        offset = 5
-        # Draw the cells
-        for row in range(self.board.n_rows):
-            for col in range(self.board.n_cols):
-                x = col * (self.cell_size + self.line_width) + self.line_width
-                y = row * (self.cell_size + self.line_width) + self.line_width
-                cell = self.board.minefield[row][col]
+        if self.help:
+            # Other parameters
+            corner_radius = self.cell_size // 5
+            offset = 5
+            # Draw the cells
+            for row in range(self.board.n_rows):
+                for col in range(self.board.n_cols):
+                    x = col * (self.cell_size + self.line_width) + self.line_width
+                    y = row * (self.cell_size + self.line_width) + self.line_width
+                    cell = self.board.minefield[row][col]
 
-                # Adjust dimensions to include the offset
-                rect_x, rect_y = x + offset, y + offset
-                rect_size = self.cell_size - (2 * offset)
+                    # Adjust dimensions to include the offset
+                    rect_x, rect_y = x + offset, y + offset
+                    rect_size = self.cell_size - (2 * offset)
 
-                if not cell["state"] == self.board.states.UNCOVERED.value:
-                    if self.probability is not None:
-                        if self.probability[row][col] == 0:
-                            pg.draw.rect(
-                                self.screen,
-                                pg.Color("green"),
-                                (rect_x, rect_y, rect_size, rect_size),
-                                border_radius=corner_radius,
-                            )
-                        elif self.probability[row][col] == 1:
-                            pg.draw.rect(
-                                self.screen,
-                                pg.Color("red"),
-                                (rect_x, rect_y, rect_size, rect_size),
-                                border_radius=corner_radius,
-                            )
-                        else:
-                            pg.draw.rect(
-                                self.screen,
-                                self.covered_color,
-                                (rect_x, rect_y, rect_size, rect_size),
-                                border_radius=corner_radius,
-                            )
-                            text_surface = self.font.render(
-                                f"{self.probability[row][col]:.2f}",
-                                True,
-                                get_rgb(self.probability[row][col]),
-                            )
-                            text_rect = text_surface.get_rect(
-                                center=(
-                                    rect_x + rect_size // 2,
-                                    rect_y + rect_size // 2,
+                    if not cell["state"] == self.board.states.UNCOVERED:
+                        if self.probability is not None:
+                            if self.probability[row][col] == 0:
+                                pg.draw.rect(
+                                    self.screen,
+                                    pg.Color("green"),
+                                    (rect_x, rect_y, rect_size, rect_size),
+                                    border_radius=corner_radius,
                                 )
-                            )
+                            elif self.probability[row][col] == 1:
+                                center_x = rect_x + rect_size // 2 - self.scaled_flag_image.get_width() // 2
+                                center_y = rect_y + rect_size // 2 - self.scaled_flag_image.get_height() // 2
 
-                            self.screen.blit(text_surface, text_rect)
+                                self.screen.blit(self.scaled_flag_image, (center_x, center_y))
+                            else:
+                                pg.draw.rect(
+                                    self.screen,
+                                    self.covered_color,
+                                    (rect_x, rect_y, rect_size, rect_size),
+                                    border_radius=corner_radius,
+                                )
+                                text_surface = self.font.render(
+                                    f"{self.probability[row][col]:.2f}",
+                                    True,
+                                    get_rgb(self.probability[row][col]),
+                                )
+                                text_rect = text_surface.get_rect(
+                                    center=(
+                                        rect_x + rect_size // 2,
+                                        rect_y + rect_size // 2,
+                                    )
+                                )
+
+                                self.screen.blit(text_surface, text_rect)
 
     def draw_lines(self):
         gap_size = self.cell_size // 8

@@ -1,6 +1,6 @@
 import random
 import string
-from enum import Enum
+from dataclasses import dataclass
 from solver import Rule, MineCount, solve
 from typing import Tuple, Dict, List, Set, Union
 
@@ -13,10 +13,11 @@ game_mode: Dict[str, Dict[str, int]] = {
 }
 
 
-class State(Enum):
+@dataclass
+class State:
     UNCOVERED = 0
     COVERED = -1
-    FLAGGED = 1
+    # FLAGGED = 1
 
 
 class TagGenerator:
@@ -57,7 +58,7 @@ class Minesweeper:
 
         # Replace NumPy array with a list of lists of dicts.
         self.minefield = [
-            [{"mine_count": 0, "state": self.states.COVERED.value} for _ in range(self.n_cols)] for _ in range(self.n_rows)
+            [{"mine_count": 0, "state": self.states.COVERED} for _ in range(self.n_cols)] for _ in range(self.n_rows)
         ]
 
         self.mines: Set[Tuple[int, int]] = set()
@@ -66,9 +67,7 @@ class Minesweeper:
     def place_mines(self) -> None:
         indices: List[Tuple[int, int]] = [(r, c) for r in range(self.n_rows) for c in range(self.n_cols)]
 
-        mine_indices: List[Tuple[int, int]] = random.sample(indices, self.n_mines)
-
-        for i, j in mine_indices:
+        for i, j in random.sample(indices, self.n_mines):
             self.mines.add((i, j))
             self.minefield[i][j]["mine_count"] = -1
             for r in range(max(0, i - 1), min(i + 2, self.n_rows)):
@@ -81,17 +80,17 @@ class Minesweeper:
             return
 
         # Use list indexing: self.minefield[i][j], not self.minefield[i, j]
-        if self.minefield[i][j]["state"] != State.COVERED.value:
+        if self.minefield[i][j]["state"] != State.COVERED:
             return
 
         if self.minefield[i][j]["mine_count"] == -1:
             self.game_over = True
             self.reveal_all_mines()
-            print("Game Over! You hit a mine.")
+            print("Game Over!")
             return
 
         # Mark this cell as uncovered
-        self.minefield[i][j]["state"] = State.UNCOVERED.value
+        self.minefield[i][j]["state"] = State.UNCOVERED
 
         # If the cell has no adjacent mines, recursively reveal neighbors
         if self.minefield[i][j]["mine_count"] == 0:
@@ -112,7 +111,7 @@ class Minesweeper:
             (i, j)
             for i in range(self.n_rows)
             for j in range(self.n_cols)
-            if self.minefield[i][j]["state"] == State.COVERED.value and self.minefield[i][j]["mine_count"] != -1
+            if self.minefield[i][j]["state"] == State.COVERED and self.minefield[i][j]["mine_count"] != -1
         ]
 
         if not safe_cells:
@@ -124,32 +123,32 @@ class Minesweeper:
         self.reveal(i, j)
 
     def reveal_all_mines(self) -> None:
-        print("boom")
         # For each mine location, mark its state as UNCOVERED
         for i, j in self.mines:
-            self.minefield[i][j]["state"] = State.UNCOVERED.value
+            self.minefield[i][j]["state"] = State.UNCOVERED
         self.game_over = True
         self.game_won = False
 
     def check_win(self) -> bool:
-        # Find all cells that are not uncovered
-        covered_cells: List[Tuple[int, int]] = [
-            (i, j)
-            for i in range(self.n_rows)
-            for j in range(self.n_cols)
-            if self.minefield[i][j]["state"] != State.UNCOVERED.value
-        ]
-        # We win if the number of covered cells == number of mines
-        return len(covered_cells) == self.n_mines
+        return (
+            len(
+                [
+                    (i, j)
+                    for i in range(self.n_rows)
+                    for j in range(self.n_cols)
+                    if self.minefield[i][j]["state"] != State.UNCOVERED
+                ]
+            )
+            == self.n_mines
+        )
 
     def get_neighbors(self, i: int, j: int) -> List[Tuple[int, int]]:
-        # Define neighbor ranges without NumPy slicing
-        neighbors = []
-        for x in range(max(0, i - 1), min(i + 2, self.n_rows)):
-            for y in range(max(0, j - 1), min(j + 2, self.n_cols)):
-                if (x, y) != (i, j):
-                    neighbors.append((x, y))
-        return neighbors
+        return [
+            (x, y)
+            for x in range(max(0, i - 1), min(i + 2, self.n_rows))
+            for y in range(max(0, j - 1), min(j + 2, self.n_cols))
+            if (x, y) != (i, j)
+        ]
 
     def create_rules_from_minefield(self) -> Set[Rule]:
         rules: Set[Rule] = set()
@@ -159,15 +158,15 @@ class Minesweeper:
 
         for i in range(self.n_rows):
             for j in range(self.n_cols):
-                if self.minefield[i][j]["state"] == State.UNCOVERED.value:
+                if self.minefield[i][j]["state"] == State.UNCOVERED:
                     neighbors = self.get_neighbors(i, j)
                     mine_count: int = self.minefield[i][j]["mine_count"]
 
                     covered_neighbors: List[str] = []
                     for x, y in neighbors:
-                        # Check if the neighbor is COVERED or FLAGGED
+                        # Check if the neighbor is COVERED
                         neighbor_state = self.minefield[x][y]["state"]
-                        if neighbor_state == State.COVERED.value or neighbor_state == State.FLAGGED.value:
+                        if neighbor_state == State.COVERED:
                             # Assign a unique tag to this neighbor if needed
                             if (x, y) not in tags:
                                 tag: str = tag_generator.next_tag()
@@ -220,7 +219,6 @@ class Minesweeper:
         results: dict[str | None, float] | dict[str, float] = solve(
             rules, MineCount(total_cells=total_cells, total_mines=self.n_mines)
         )
-
         return self.decode_solution(results)
 
 
@@ -228,8 +226,8 @@ if __name__ == "__main__":
     board: Minesweeper = Minesweeper("intermediate")
     counter: int = 0
     while not (board.game_won or board.game_over):
+        print(counter)
         board.random_safe_reveal()
         a, b = board.solve_minefield()
         counter += 1
         # print(a, b)
-        print(counter)
