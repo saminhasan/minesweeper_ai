@@ -4,3 +4,5 @@ This repository is my first attempt at working with Minesweeper solvers. It is b
 I used [his Python repo](https://github.com/mrgriscom/minesweepr/) as the base and modified it slightly to work with Python 3. 
 
 The project includes a basic Minesweeper UI to test how to use MrGris's solver could be used. This was a starting point to understand the solver's logic and pygame UI test.
+
+No other dependency other than pygame. Check out the [demo](https://saminhasan.itch.io/minesweeper-ai)
