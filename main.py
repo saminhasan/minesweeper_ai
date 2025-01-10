@@ -62,12 +62,12 @@ class GUI:
 
         pg.init()
         pg.font.init()
-        self.mine_image: pg.Surface = pg.image.load("mine.png")  # Load icon image
+        self.mine_image: pg.Surface = pg.image.load("mine.png")
         # Scale the mine image to fit the cell size
         self.scaled_mine_image = pg.transform.scale(self.mine_image, (self.cell_size, self.cell_size))
         self.flag_image = pg.image.load("flag.png")
         self.scaled_flag_image = pg.transform.scale(self.flag_image, (self.cell_size // 1.5, self.cell_size // 1.5))
-        pg.display.set_icon(self.mine_image)  # Set the icon for the window
+        pg.display.set_icon(self.mine_image)
         self.font = pg.font.Font(None, FONT_SIZE)  # Default font in PyGBag
         self.overlay_font = pg.font.Font(None, min(self.width // 15, self.height // 15))
         self.clock = pg.time.Clock()
@@ -81,7 +81,6 @@ class GUI:
                 self.quit()
             elif event.type == pg.KEYDOWN:
                 self.handle_key_event(event.key)
-            # elif event.type in [pg.MOUSEBUTTONDOWN, pg.MOUSEBUTTONUP]:
             elif event.type in [pg.MOUSEBUTTONDOWN]:
                 self.handle_mouse_event(event)
 
@@ -106,9 +105,8 @@ class GUI:
             if event.type == pg.MOUSEBUTTONDOWN:
                 col = (event.pos[0] - self.line_width) // (self.cell_size + self.line_width)
                 row = (event.pos[1] - self.line_width) // (self.cell_size + self.line_width)
-                # Check if the click is within the bounds of the board
                 if 0 <= row < self.board.n_rows and 0 <= col < self.board.n_cols:
-                    if event.button == pg.BUTTON_LEFT:  # Left click
+                    if event.button == pg.BUTTON_LEFT:
                         if (row, col) not in self.flagged:
                             if self.board.minefield[row][col]["mine_count"] == -1:
                                 self.board.reveal_all_mines()
@@ -129,17 +127,15 @@ class GUI:
                             self.flagged.discard((row, col))
 
     def draw(self):
-        self.screen.fill([0, 0, 0])  # Background color
+        self.screen.fill([0, 0, 0])
         self.draw_lines()
 
-        # Check for game over or won condition
         if self.board.game_won:
             self.draw_cells()
             self.draw_flags()
             main_text = "Game Won, Press 'R' to Restart"
-            # Create a transparent overlay surface
             overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
-            overlay.fill((0, 64, 0, 64))  # Semi-transparent green background
+            overlay.fill((0, 64, 0, 64))
             self.screen.blit(overlay, (0, 0))
 
         elif self.board.game_over:
@@ -147,7 +143,7 @@ class GUI:
             main_text = "Game Over, Press 'R' to Restart"
             # Create a transparent overlay surface
             overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
-            overlay.fill((64, 0, 0, 64))  # Semi-transparent green background
+            overlay.fill((64, 0, 0, 64))
             self.screen.blit(overlay, (0, 0))
 
         else:
@@ -155,11 +151,10 @@ class GUI:
             self.draw_bayes()
             return
 
-        # Render main message
-        main_text_surface = self.overlay_font.render(main_text, True, (255, 255, 255))  # White text
+        main_text_surface = self.overlay_font.render(main_text, True, (255, 255, 255))
         main_text_rect = main_text_surface.get_rect(center=(self.width // 2, self.height // 3))
 
-        level_text = f"Current Level: {self.level.capitalize()}"  # Capitalize level string
+        level_text = f"Current Level: {self.level.capitalize()}"
         level_surface = self.overlay_font.render(level_text, True, (255, 255, 255))
         level_rect = level_surface.get_rect(center=(self.width // 2, self.height // 2))
 
@@ -167,13 +162,11 @@ class GUI:
         options_surface = self.overlay_font.render(options_text, True, (255, 255, 255))
         options_rect = options_surface.get_rect(center=(self.width // 2, (2 * self.height) // 3))
 
-        # Draw everything
         self.screen.blit(main_text_surface, main_text_rect)
         self.screen.blit(level_surface, level_rect)
         self.screen.blit(options_surface, options_rect)
 
     def draw_cells(self):
-        # Other parameters
         corner_radius = self.cell_size // 5
         offset = 5
 
@@ -192,9 +185,7 @@ class GUI:
                         (rect_x, rect_y, rect_size, rect_size),
                         border_radius=corner_radius,
                     )
-                    # Check if the cell is flagged
                     if (row, col) in self.flagged:
-                        # Center the flag image within the cell
                         center_x = rect_x + rect_size // 2 - self.scaled_flag_image.get_width() // 2
                         center_y = rect_y + rect_size // 2 - self.scaled_flag_image.get_height() // 2
 
@@ -222,7 +213,6 @@ class GUI:
                     y = row * (self.cell_size + self.line_width) + self.line_width
                     cell = self.board.minefield[row][col]
 
-                    # Adjust dimensions to include the offset
                     rect_x, rect_y = x + offset, y + offset
                     rect_size = self.cell_size - (2 * offset)
 
@@ -305,9 +295,7 @@ class GUI:
                 rect_x, rect_y = x, y
                 rect_size = self.cell_size
 
-                # Check if the cell contains a mine
                 if cell["mine_count"] == -1:
-                    # Center the mine image within the cell
                     center_x = rect_x + rect_size // 2 - self.scaled_mine_image.get_width() // 2
                     center_y = rect_y + rect_size // 2 - self.scaled_mine_image.get_height() // 2
 
@@ -350,7 +338,7 @@ async def main():
             game.handle_events()
             game.draw()
             pg.display.update()
-            await asyncio.sleep(0)  # Yield control to the event loop
+            await asyncio.sleep(0)
     except Exception as e:
         print(e)
     finally:

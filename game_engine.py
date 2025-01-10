@@ -56,7 +56,6 @@ class Minesweeper:
         self.shape: Tuple[int, int] = (self.n_rows, self.n_cols)
         self.n_mines: int = game_mode[difficulty]["mines"]
 
-        # Replace NumPy array with a list of lists of dicts.
         self.minefield = [
             [{"mine_count": 0, "state": self.states.COVERED} for _ in range(self.n_cols)] for _ in range(self.n_rows)
         ]
@@ -79,7 +78,6 @@ class Minesweeper:
         if self.game_over or self.game_won:
             return
 
-        # Use list indexing: self.minefield[i][j], not self.minefield[i, j]
         if self.minefield[i][j]["state"] != State.COVERED:
             return
 
@@ -106,7 +104,6 @@ class Minesweeper:
             return
 
     def random_safe_reveal(self) -> None:
-        # Generate a list of all covered cells that are not mines
         safe_cells: List[Tuple[int, int]] = [
             (i, j)
             for i in range(self.n_rows)
@@ -118,12 +115,10 @@ class Minesweeper:
             print("No safe cells to reveal.")
             return
 
-        # Randomly pick one of those safe cells and reveal it
         i, j = random.choice(safe_cells)
         self.reveal(i, j)
 
     def reveal_all_mines(self) -> None:
-        # For each mine location, mark its state as UNCOVERED
         for i, j in self.mines:
             self.minefield[i][j]["state"] = State.UNCOVERED
         self.game_over = True
@@ -230,4 +225,3 @@ if __name__ == "__main__":
         board.random_safe_reveal()
         a, b = board.solve_minefield()
         counter += 1
-        # print(a, b)
